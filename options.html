@@ -9,6 +9,7 @@
       .row { display: flex; align-items: center; gap: 12px; margin: 14px 0; }
       .row span { flex: 1; }
       button { font: inherit; padding: 8px 14px; border: 1px solid #65744e; border-radius: 8px; background: #d6e7a8; cursor: pointer; }
+      #base-url { flex: 1; font: inherit; padding: 7px 10px; border: 1px solid #65744e; border-radius: 8px; }
       #status { min-height: 1.5em; color: #555; }
     </style>
   </head>
@@ -17,6 +18,7 @@
     <p>Click the extension icon to move the newest completed file from the source folder to the destination folder and open it at localhost.</p>
     <div class="row"><span id="source-name">Source: not set</span><button id="source" type="button">Choose source</button></div>
     <div class="row"><span id="destination-name">Destination: not set</span><button id="destination" type="button">Choose destination</button></div>
+    <div class="row"><input id="base-url" type="url" placeholder="http://localhost:8080/Shopping/"><button id="save-url" type="button">Save URL</button><button id="reset-url" type="button">Reset</button></div>
     <div class="row"><button id="clear" type="button">Clear folders</button></div>
     <p id="status"></p>
   </body>

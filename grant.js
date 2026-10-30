@@ -15,7 +15,8 @@ grantButton.addEventListener("click", async () => {
     ]);
     if (source !== "granted" || destination !== "granted") throw new Error("Folder access was not granted.");
     const name = await moveNewestOverrideFile(saved.source, saved.destination);
-    location.replace(`${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}`);
+    const baseUrl = await getPageOverrideBaseUrl();
+    location.replace(`${baseUrl}${encodeURIComponent(name)}`);
   } catch (error) {
     message.textContent = `Could not complete Page Override: ${error.message || String(error)}`;
     grantButton.disabled = false;

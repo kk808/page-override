@@ -77,4 +77,33 @@ document.getElementById("clear").addEventListener("click", async () => {
   }
 });
 
+const DEFAULT_BASE_URL = "http://localhost:8080/Shopping/";
+const baseUrlInput = document.getElementById("base-url");
+
+async function loadBaseUrl() {
+  const { baseUrl } = await chrome.storage.local.get("baseUrl");
+  baseUrlInput.value = baseUrl || DEFAULT_BASE_URL;
+}
+
+document.getElementById("save-url").addEventListener("click", async () => {
+  try {
+    const url = new URL(baseUrlInput.value.trim());
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("Use an http or https URL.");
+    const baseUrl = url.href.endsWith("/") ? url.href : `${url.href}/`;
+    await chrome.storage.local.set({ baseUrl });
+    baseUrlInput.value = baseUrl;
+    status.textContent = "Base URL saved.";
+  } catch (error) {
+    status.textContent = `Could not save URL: ${error.message || String(error)}`;
+  }
+});
+
+document.getElementById("reset-url").addEventListener("click", async () => {
+  await chrome.storage.local.remove("baseUrl");
+  baseUrlInput.value = DEFAULT_BASE_URL;
+  status.textContent = "Base URL reset to default.";
+});
+
+loadBaseUrl().catch((error) => { status.textContent = String(error.message || error); });
+
 refresh().catch((error) => { status.textContent = String(error.message || error); });

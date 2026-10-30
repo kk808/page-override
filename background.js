@@ -28,7 +28,8 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
     const name = await moveNewestOverrideFile(saved.source, saved.destination);
-    await chrome.tabs.update(tabId, { url: `${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}` });
+    const baseUrl = await getPageOverrideBaseUrl();
+    await chrome.tabs.update(tabId, { url: `${baseUrl}${encodeURIComponent(name)}` });
     await setBadge(tabId, "", "Page Override");
   } catch (error) {
     console.warn("Could not run Page Override", error);

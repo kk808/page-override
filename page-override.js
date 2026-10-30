@@ -1,5 +1,10 @@
 // Shared by the side panel and the background worker (Alt+4 shortcut).
-const PAGE_OVERRIDE_BASE_URL = "http://localhost:8080/Shopping/";
+const DEFAULT_PAGE_OVERRIDE_BASE_URL = "http://localhost:8080/Shopping/";
+
+async function getPageOverrideBaseUrl() {
+  const { baseUrl } = await chrome.storage.local.get("baseUrl");
+  return baseUrl || DEFAULT_PAGE_OVERRIDE_BASE_URL;
+}
 
 async function moveNewestOverrideFile(sourceDirectory, destinationDirectory) {
   let newestFile = null;
