@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Page Override</title>
+    <script src="page-override.js" defer></script>
+    <script src="grant.js" defer></script>
+    <style>
+      body { font: 16px "Segoe UI", sans-serif; display: grid; place-items: center; min-height: 100vh; margin: 0; background: #f7f7f0; color: #243c35; }
+      main { text-align: center; }
+      button { font: inherit; padding: 12px 20px; border: 1px solid #65744e; border-radius: 8px; background: #d6e7a8; cursor: pointer; }
+      p { max-width: 36ch; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="message">Chrome needs you to confirm folder access again.</p>
+      <button id="grant" type="button">Grant access and open page</button>
+    </main>
+  </body>
+</html>
