@@ -6,16 +6,25 @@ async function getPageOverrideBaseUrl() {
   return baseUrl || DEFAULT_PAGE_OVERRIDE_BASE_URL;
 }
 
-async function moveNewestOverrideFile(sourceDirectory, destinationDirectory) {
+async function findNewestOverrideFile(directory) {
   let newestFile = null;
-  for await (const [name, entry] of sourceDirectory.entries()) {
+  for await (const [name, entry] of directory.entries()) {
     if (entry.kind !== "file" || name.toLowerCase().endsWith(".crdownload")) continue;
     const file = await entry.getFile();
     if (!newestFile || file.lastModified > newestFile.file.lastModified) {
       newestFile = { name, file };
     }
   }
-  if (!newestFile) throw new Error("No completed files were found in the source folder.");
+  return newestFile;
+}
+
+async function moveNewestOverrideFile(sourceDirectory, destinationDirectory) {
+  const newestFile = await findNewestOverrideFile(sourceDirectory);
+  if (!newestFile) {
+    const destinationFile = await findNewestOverrideFile(destinationDirectory);
+    if (!destinationFile) throw new Error("No files were found in the source or destination folder.");
+    return destinationFile.name;
+  }
 
   const destinationFile = await destinationDirectory.getFileHandle(newestFile.name, { create: true });
   const writer = await destinationFile.createWritable();
