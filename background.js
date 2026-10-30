@@ -28,8 +28,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
     const name = await copyNewestOverrideFile(saved.source, saved.destination);
-    // A unique query string stops Chrome from replacing the history entry when the URL is unchanged.
-    await chrome.tabs.update(tabId, { url: `${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}?t=${Date.now()}` });
+    await chrome.tabs.update(tabId, { url: `${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}` });
     await setBadge(tabId, "", "Page Override");
   } catch (error) {
     console.warn("Could not run Page Override", error);
