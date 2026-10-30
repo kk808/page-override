@@ -21,13 +21,13 @@ chrome.action.onClicked.addListener(async (tab) => {
       await chrome.runtime.openOptionsPage();
       return;
     }
-    if (await saved.source.queryPermission({ mode: "read" }) !== "granted" ||
+    if (await saved.source.queryPermission({ mode: "readwrite" }) !== "granted" ||
         await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
       // Chrome drops folder access when no extension page is open; re-granting needs a click.
       await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
       return;
     }
-    const name = await copyNewestOverrideFile(saved.source, saved.destination);
+    const name = await moveNewestOverrideFile(saved.source, saved.destination);
     await chrome.tabs.update(tabId, { url: `${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}` });
     await setBadge(tabId, "", "Page Override");
   } catch (error) {

@@ -1,7 +1,7 @@
 // Shared by the side panel and the background worker (Alt+4 shortcut).
 const PAGE_OVERRIDE_BASE_URL = "http://localhost:8080/Shopping/";
 
-async function copyNewestOverrideFile(sourceDirectory, destinationDirectory) {
+async function moveNewestOverrideFile(sourceDirectory, destinationDirectory) {
   let newestFile = null;
   for await (const [name, entry] of sourceDirectory.entries()) {
     if (entry.kind !== "file" || name.toLowerCase().endsWith(".crdownload")) continue;
@@ -22,6 +22,7 @@ async function copyNewestOverrideFile(sourceDirectory, destinationDirectory) {
     catch (abortError) { console.warn("Could not abort the incomplete page override copy", abortError); }
     throw error;
   }
+  await sourceDirectory.removeEntry(newestFile.name);
   return newestFile.name;
 }
 

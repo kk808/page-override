@@ -10,11 +10,11 @@ grantButton.addEventListener("click", async () => {
     }
     // Both requests must start from this click, so issue them together.
     const [source, destination] = await Promise.all([
-      saved.source.requestPermission({ mode: "read" }),
+      saved.source.requestPermission({ mode: "readwrite" }),
       saved.destination.requestPermission({ mode: "readwrite" }),
     ]);
     if (source !== "granted" || destination !== "granted") throw new Error("Folder access was not granted.");
-    const name = await copyNewestOverrideFile(saved.source, saved.destination);
+    const name = await moveNewestOverrideFile(saved.source, saved.destination);
     location.replace(`${PAGE_OVERRIDE_BASE_URL}${encodeURIComponent(name)}`);
   } catch (error) {
     message.textContent = `Could not complete Page Override: ${error.message || String(error)}`;

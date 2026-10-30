@@ -1,6 +1,6 @@
 const status = document.getElementById("status");
 const DB_NAME = "devtoolkit-page-override";
-const MODES = { source: "read", destination: "readwrite" };
+const MODES = { source: "readwrite", destination: "readwrite" };
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
