@@ -26,7 +26,7 @@ function overrideFileName(pageUrl, date = new Date()) {
   try { params = new URL(pageUrl).searchParams; } catch { /* no usable URL */ }
   const keys = params.get("Segments") ? SEGMENT_FILE_NAME_PARAMS : FILE_NAME_PARAMS;
   const parts = keys
-    .map((key) => (params.get(key) || "").replace(/\s+/g, "").replace(/[^A-Za-z0-9_~-]+/g, ""))
+    .map((key) => (params.get(key) || "").replace(/_Economy/g, "").replace(/\s+/g, "").replace(/[^A-Za-z0-9_~-]+/g, ""))
     .filter(Boolean);
   const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
     `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
