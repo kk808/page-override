@@ -18,17 +18,26 @@ async function captureTabHtml(tabId) {
 }
 
 const FILE_NAME_PARAMS = ["TripType", "FromCode", "ToCode", "FromDate", "ToDate"];
+const SEGMENT_FILE_NAME_PARAMS = ["TripType", "Segments"];
 
 function overrideFileName(pageUrl, date = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
   let params = new URLSearchParams();
   try { params = new URL(pageUrl).searchParams; } catch { /* no usable URL */ }
-  const parts = FILE_NAME_PARAMS
-    .map((key) => (params.get(key) || "").replace(/[^A-Za-z0-9]+/g, ""))
+  const keys = params.get("Segments") ? SEGMENT_FILE_NAME_PARAMS : FILE_NAME_PARAMS;
+  const parts = keys
+    .map((key) => (params.get(key) || "").replace(/\s+/g, "").replace(/[^A-Za-z0-9_~-]+/g, ""))
     .filter(Boolean);
   const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
     `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   return ["SearchFight", ...parts, timestamp].join("-");
+}
+
+function withTitle(html, title) {
+  const titleTag = `<title>${title}</title>`;
+  if (/<title[\s>]/i.test(html)) return html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, () => titleTag);
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (head) => head + titleTag);
+  return html;
 }
 
 async function savePageHtml(destinationDirectory, { html, url }) {
@@ -36,7 +45,7 @@ async function savePageHtml(destinationDirectory, { html, url }) {
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
-    await writer.write(html);
+    await writer.write(withTitle(html, name.replace(/^SearchFight-/, "")));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
