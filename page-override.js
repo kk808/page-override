@@ -11,20 +11,28 @@ async function captureTabHtml(tabId) {
     target: { tabId },
     func: () => {
       const doctype = document.doctype ? new XMLSerializer().serializeToString(document.doctype) : "";
-      return doctype + document.documentElement.outerHTML;
+      return { html: doctype + document.documentElement.outerHTML, url: location.href };
     },
   });
   return result.result;
 }
 
-function overrideFileName(date = new Date()) {
+const FILE_NAME_PARAMS = ["TripType", "FromCode", "ToCode", "FromDate", "ToDate"];
+
+function overrideFileName(pageUrl, date = new Date()) {
   const pad = (n) => String(n).padStart(2, "0");
-  return `SearchFight-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-` +
+  let params = new URLSearchParams();
+  try { params = new URL(pageUrl).searchParams; } catch { /* no usable URL */ }
+  const parts = FILE_NAME_PARAMS
+    .map((key) => (params.get(key) || "").replace(/[^A-Za-z0-9]+/g, ""))
+    .filter(Boolean);
+  const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
     `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  return ["SearchFight", ...parts, timestamp].join("-");
 }
 
-async function savePageHtml(destinationDirectory, html) {
-  const name = overrideFileName();
+async function savePageHtml(destinationDirectory, { html, url }) {
+  const name = overrideFileName(url);
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {

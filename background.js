@@ -21,14 +21,14 @@ chrome.action.onClicked.addListener(async (tab) => {
       await chrome.runtime.openOptionsPage();
       return;
     }
-    const html = await captureTabHtml(tabId);
+    const page = await captureTabHtml(tabId);
     if (await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
       // Chrome drops folder access when no extension page is open; re-granting needs a click.
-      await chrome.storage.session.set({ pendingHtml: html });
+      await chrome.storage.session.set({ pendingPage: page });
       await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
       return;
     }
-    const name = await savePageHtml(saved.destination, html);
+    const name = await savePageHtml(saved.destination, page);
     const baseUrl = await getPageOverrideBaseUrl();
     await chrome.tabs.update(tabId, { url: `${baseUrl}${encodeURIComponent(name)}` });
     await setBadge(tabId, "", "Page Override");
