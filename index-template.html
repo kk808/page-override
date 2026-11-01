@@ -4,31 +4,40 @@
     <meta charset="utf-8">
     <title>Page Override – Saved Pages</title>
     <style>
-      body { font: 16px "Segoe UI", sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; color: #243c35; }
-      h1 { margin-bottom: 4px; }
-      .bar { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
-      #filter { flex: 1; font: inherit; padding: 7px 10px; border: 1px solid #65744e; border-radius: 8px; }
-      button { font: inherit; padding: 6px 12px; border: 1px solid #65744e; border-radius: 8px; background: #d6e7a8; cursor: pointer; }
-      table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
-      td.src { font-size: 12px; color: #666; word-break: break-all; }
-      #status { min-height: 1.5em; color: #555; }
+      :root { color-scheme: dark; }
+      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px; background: #0f1218; color: #e6e9ef; }
+      #tables { display: grid; gap: 16px; align-items: start; width: 100%; }
+      table { table-layout: fixed; }
+      td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      td:first-child a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+      .bar { position: relative; margin: 0 0 16px; }
+      #filter { width: 100%; box-sizing: border-box; padding-right: 70px; font: inherit; padding: 9px 12px; color: inherit; background: #181c25; border: 1px solid #2a3040; border-radius: 10px; outline: none; transition: border-color .15s, box-shadow .15s; }
+      #filter::placeholder { color: #6b7385; }
+      #filter:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91, 141, 239, .25); }
+      #count { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #8b93a7; pointer-events: none; }
+      button { font: inherit; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; line-height: 1; color: #ff8a8a; background: transparent; border: 1px solid #4a2a30; border-radius: 8px; cursor: pointer; transition: background .15s, border-color .15s; }
+      button:hover { background: rgba(255, 90, 90, .12); border-color: #ff6b6b; }
+      table { width: 100%; border-collapse: separate; border-spacing: 0; background: #151922; border: 1px solid #232938; border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #232938; vertical-align: middle; }
+      th { font-size: 16px; font-weight: 700; letter-spacing: .04em; color: #e6e9ef; background: #1a1f2b; }
+      tbody tr:last-child td { border-bottom: none; }
+      tbody tr:hover td { background: #1b2130; }
+      td:last-child { text-align: right; }
+      a { color: #7aa7ff; text-decoration: none; }
+      a:hover { color: #a9c4ff; text-decoration: underline; }
+      #status { min-height: 1.5em; margin: 6px 0 12px; color: #8b93a7; }
     </style>
   </head>
   <body>
-    <h1>Saved Pages</h1>
-    <p id="count"></p>
     <div class="bar">
-      <input id="filter" placeholder="Filter saved pages...">
-      <button id="connect" type="button">Choose folder for delete (one time)</button>
+      <input id="filter" placeholder="Filter">
+      <span id="count"></span>
     </div>
     <p id="status"></p>
-    <table>
-      <thead><tr><th>TripType</th><th>Page</th><th></th></tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
+    <div id="tables"></div>
     <script>
-      const rows = document.getElementById("rows");
+      const tables = document.getElementById("tables");
       const statusEl = document.getElementById("status");
       const filterEl = document.getElementById("filter");
       let entries = [];
@@ -48,25 +57,54 @@
           .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q))
           // Sort by TripType; Array.sort is stable, so newest stays first within a trip type.
           .sort((a, b) => (a.tripType || "").localeCompare(b.tripType || ""));
-        document.getElementById("count").textContent = shown.length + " of " + entries.length + " saved pages";
-        rows.textContent = "";
+        document.getElementById("count").textContent = shown.length + "/" + entries.length;
+        tables.textContent = "";
+        // One table per TripType (up to 4), laid out side by side across the full viewport width.
+        const groups = new Map();
         for (const e of shown) {
-          const tr = document.createElement("tr");
-          const a = document.createElement("a");
-          a.href = encodeURIComponent(e.name);
-          a.textContent = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
-          const cells = [e.tripType || "", a].map((c) => {
-            const td = document.createElement("td");
-            td.append(c);
-            return td;
-          });
-          const del = document.createElement("button");
-          del.textContent = "Delete";
-          del.onclick = () => remove(e);
-          const last = document.createElement("td");
-          last.append(del);
-          tr.append(...cells, last);
-          rows.append(tr);
+          const key = e.tripType || "Unknown";
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(e);
+        }
+        tables.style.gridTemplateColumns = "repeat(" + Math.max(groups.size, 1) + ", minmax(0, 1fr))";
+        for (const [tripType, items] of groups) {
+          const table = document.createElement("table");
+          const head = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          const th = document.createElement("th");
+          th.colSpan = 2;
+          th.textContent = tripType + " (" + items.length + ")";
+          headRow.append(th);
+          head.append(headRow);
+          const body = document.createElement("tbody");
+          const cols = document.createElement("colgroup");
+          const pageCol = document.createElement("col");
+          const delCol = document.createElement("col");
+          delCol.style.width = "48px";
+          cols.append(pageCol, delCol);
+          table.append(cols, head, body);
+          for (const e of items) {
+            const tr = document.createElement("tr");
+            const a = document.createElement("a");
+            a.href = encodeURIComponent(e.name);
+            let label = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
+            // The TripType is the table heading, so drop it from the start of the label.
+            if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
+            a.textContent = label;
+            a.title = label;
+            const linkCell = document.createElement("td");
+            linkCell.append(a);
+            const del = document.createElement("button");
+            del.textContent = "−";
+            del.title = "Delete";
+            del.setAttribute("aria-label", "Delete " + e.name);
+            del.onclick = () => remove(e);
+            const delCell = document.createElement("td");
+            delCell.append(del);
+            tr.append(linkCell, delCell);
+            body.append(tr);
+          }
+          tables.append(table);
         }
       }
 
@@ -88,13 +126,18 @@
       async function restoreDir() {
         try {
           dir = (await idb("readonly", (s) => s.get("dir"))) || null;
-          if (dir) statusEl.textContent = "Delete enabled for " + dir.name;
+          if (dir) statusEl.textContent = "";
         } catch { dir = null; }
       }
 
       async function remove(entry) {
-        if (!dir) { statusEl.textContent = "Click 'Enable delete' and pick the destination folder first."; return; }
         try {
+          await restored;
+          if (!dir) {
+            // First delete only: ask for the destination folder, then remember it.
+            dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
+            await idb("readwrite", (s) => s.put(dir, "dir"));
+          }
           if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
               await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
             statusEl.textContent = "Folder access was not granted.";
@@ -107,18 +150,11 @@
           await w.close();
           statusEl.textContent = "Deleted " + entry.name;
           render();
-        } catch (err) { statusEl.textContent = "Delete failed: " + err.message; }
+        } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Delete failed: " + err.message; }
       }
 
-      document.getElementById("connect").onclick = async () => {
-        try {
-          dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
-          await idb("readwrite", (s) => s.put(dir, "dir"));
-          statusEl.textContent = "Delete enabled for " + dir.name;
-        } catch (err) { if (err.name !== "AbortError") statusEl.textContent = err.message; }
-      };
       filterEl.oninput = render;
-      restoreDir();
+      const restored = restoreDir();
       load();
     </script>
   </body>
