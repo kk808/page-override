@@ -5,16 +5,14 @@ grantButton.addEventListener("click", async () => {
   grantButton.disabled = true;
   try {
     const saved = await readSavedOverrideDirectories();
-    if (!saved.source || !saved.destination) {
-      throw new Error("Choose the folders on the extension options page first.");
+    if (!saved.destination) throw new Error("Choose the destination folder on the extension options page first.");
+    if (await saved.destination.requestPermission({ mode: "readwrite" }) !== "granted") {
+      throw new Error("Folder access was not granted.");
     }
-    // Both requests must start from this click, so issue them together.
-    const [source, destination] = await Promise.all([
-      saved.source.requestPermission({ mode: "readwrite" }),
-      saved.destination.requestPermission({ mode: "readwrite" }),
-    ]);
-    if (source !== "granted" || destination !== "granted") throw new Error("Folder access was not granted.");
-    const name = await moveNewestOverrideFile(saved.source, saved.destination);
+    const { pendingHtml } = await chrome.storage.session.get("pendingHtml");
+    if (typeof pendingHtml !== "string") throw new Error("No captured page was found. Run Page Override again.");
+    const name = await savePageHtml(saved.destination, pendingHtml);
+    await chrome.storage.session.remove("pendingHtml");
     const baseUrl = await getPageOverrideBaseUrl();
     location.replace(`${baseUrl}${encodeURIComponent(name)}`);
   } catch (error) {
