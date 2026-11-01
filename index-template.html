@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Page Override – Saved Pages</title>
+    <style>
+      body { font: 16px "Segoe UI", sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; color: #243c35; }
+      h1 { margin-bottom: 4px; }
+      .bar { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+      #filter { flex: 1; font: inherit; padding: 7px 10px; border: 1px solid #65744e; border-radius: 8px; }
+      button { font: inherit; padding: 6px 12px; border: 1px solid #65744e; border-radius: 8px; background: #d6e7a8; cursor: pointer; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+      td.src { font-size: 12px; color: #666; word-break: break-all; }
+      #status { min-height: 1.5em; color: #555; }
+    </style>
+  </head>
+  <body>
+    <h1>Saved Pages</h1>
+    <p id="count"></p>
+    <div class="bar">
+      <input id="filter" placeholder="Filter saved pages...">
+      <button id="connect" type="button">Choose folder for delete (one time)</button>
+    </div>
+    <p id="status"></p>
+    <table>
+      <thead><tr><th>TripType</th><th>Page</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <script>
+      const rows = document.getElementById("rows");
+      const statusEl = document.getElementById("status");
+      const filterEl = document.getElementById("filter");
+      let entries = [];
+      let dir = null;
+
+      async function load() {
+        try {
+          const res = await fetch("index.json", { cache: "no-store" });
+          entries = res.ok ? await res.json() : [];
+        } catch { entries = []; }
+        render();
+      }
+
+      function render() {
+        const q = filterEl.value.trim().toLowerCase();
+        const shown = entries
+          .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q))
+          // Sort by TripType; Array.sort is stable, so newest stays first within a trip type.
+          .sort((a, b) => (a.tripType || "").localeCompare(b.tripType || ""));
+        document.getElementById("count").textContent = shown.length + " of " + entries.length + " saved pages";
+        rows.textContent = "";
+        for (const e of shown) {
+          const tr = document.createElement("tr");
+          const a = document.createElement("a");
+          a.href = encodeURIComponent(e.name);
+          a.textContent = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
+          const cells = [e.tripType || "", a].map((c) => {
+            const td = document.createElement("td");
+            td.append(c);
+            return td;
+          });
+          const del = document.createElement("button");
+          del.textContent = "Delete";
+          del.onclick = () => remove(e);
+          const last = document.createElement("td");
+          last.append(del);
+          tr.append(...cells, last);
+          rows.append(tr);
+        }
+      }
+
+      // The folder handle is remembered in this origin's IndexedDB so it only has to be picked once.
+      function idb(mode, action) {
+        return new Promise((resolve, reject) => {
+          const open = indexedDB.open("page-override-index", 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("kv");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            const req = action(db.transaction("kv", mode).objectStore("kv"));
+            req.onsuccess = () => { db.close(); resolve(req.result); };
+            req.onerror = () => { db.close(); reject(req.error); };
+          };
+        });
+      }
+
+      async function restoreDir() {
+        try {
+          dir = (await idb("readonly", (s) => s.get("dir"))) || null;
+          if (dir) statusEl.textContent = "Delete enabled for " + dir.name;
+        } catch { dir = null; }
+      }
+
+      async function remove(entry) {
+        if (!dir) { statusEl.textContent = "Click 'Enable delete' and pick the destination folder first."; return; }
+        try {
+          if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
+              await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
+            statusEl.textContent = "Folder access was not granted.";
+            return;
+          }
+          await dir.removeEntry(entry.name).catch((err) => { if (err.name !== "NotFoundError") throw err; });
+          entries = entries.filter((e) => e.name !== entry.name);
+          const w = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+          await w.write(JSON.stringify(entries, null, 2));
+          await w.close();
+          statusEl.textContent = "Deleted " + entry.name;
+          render();
+        } catch (err) { statusEl.textContent = "Delete failed: " + err.message; }
+      }
+
+      document.getElementById("connect").onclick = async () => {
+        try {
+          dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
+          await idb("readwrite", (s) => s.put(dir, "dir"));
+          statusEl.textContent = "Delete enabled for " + dir.name;
+        } catch (err) { if (err.name !== "AbortError") statusEl.textContent = err.message; }
+      };
+      filterEl.oninput = render;
+      restoreDir();
+      load();
+    </script>
+  </body>
+</html>
+

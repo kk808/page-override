@@ -30,7 +30,7 @@ function overrideFileName(pageUrl, date = new Date()) {
     .filter(Boolean);
   const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
     `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-  return ["SearchFight", ...parts, timestamp].join("-");
+  return ["SearchFight", ...parts, timestamp].join("-") + ".html";
 }
 
 function withTitle(html, title) {
@@ -45,13 +45,15 @@ async function savePageHtml(destinationDirectory, { html, url }) {
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
-    await writer.write(withTitle(html, name.replace(/^SearchFight-/, "")));
+    await writer.write(withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, "")));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
     catch (abortError) { console.warn("Could not abort the incomplete page save", abortError); }
     throw error;
   }
+  try { await updateIndex(destinationDirectory, { name, url }); }
+  catch (error) { console.warn("Could not update index.html", error); }
   return name;
 }
 async function readSavedOverrideDirectories() {
@@ -73,5 +75,29 @@ async function readSavedOverrideDirectories() {
     });
   } finally {
     database.close();
+  }
+}
+
+
+// Keeps index.json (data) and index.html (viewer) in the destination folder in sync with saved pages.
+async function updateIndex(destinationDirectory, { name, url }) {
+  let entries = [];
+  try {
+    const file = await (await destinationDirectory.getFileHandle("index.json")).getFile();
+    const parsed = JSON.parse(await file.text());
+    if (Array.isArray(parsed)) entries = parsed;
+  } catch { /* no index yet */ }
+  const tripTypeFromName = (n) => n.replace(/\.html$/, "").split("-")[1] || "";
+  let tripType = "";
+  try { tripType = new URL(url).searchParams.get("TripType") || ""; } catch { /* no usable URL */ }
+  entries = [{ name, tripType: tripType || tripTypeFromName(name) }, ...entries
+    .filter((e) => e.name !== name)
+    .map(({ name: entryName, tripType: entryTripType }) =>
+      ({ name: entryName, tripType: entryTripType || tripTypeFromName(entryName) }))];
+  const template = await (await fetch(chrome.runtime.getURL("index-template.html"))).text();
+  for (const [fileName, content] of [["index.json", JSON.stringify(entries, null, 2)], ["index.html", template]]) {
+    const writer = await (await destinationDirectory.getFileHandle(fileName, { create: true })).createWritable();
+    await writer.write(content);
+    await writer.close();
   }
 }
