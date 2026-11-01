@@ -17,17 +17,18 @@ chrome.action.onClicked.addListener(async (tab) => {
   try {
     if (typeof tabId !== "number") throw new Error("Could not find the active tab.");
     const saved = await readSavedOverrideDirectories();
-    if (!saved.source || !saved.destination) {
+    if (!saved.destination) {
       await chrome.runtime.openOptionsPage();
       return;
     }
-    if (await saved.source.queryPermission({ mode: "readwrite" }) !== "granted" ||
-        await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
+    const page = await captureTabHtml(tabId);
+    if (await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
       // Chrome drops folder access when no extension page is open; re-granting needs a click.
+      await chrome.storage.session.set({ pendingPage: page });
       await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
       return;
     }
-    const name = await moveNewestOverrideFile(saved.source, saved.destination);
+    const name = await savePageHtml(saved.destination, page);
     const baseUrl = await getPageOverrideBaseUrl();
     await chrome.tabs.update(tabId, { url: `${baseUrl}${encodeURIComponent(name)}` });
     await setBadge(tabId, "", "Page Override");

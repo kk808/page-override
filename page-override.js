@@ -6,40 +6,56 @@ async function getPageOverrideBaseUrl() {
   return baseUrl || DEFAULT_PAGE_OVERRIDE_BASE_URL;
 }
 
-async function findNewestOverrideFile(directory) {
-  let newestFile = null;
-  for await (const [name, entry] of directory.entries()) {
-    if (entry.kind !== "file" || name.toLowerCase().endsWith(".crdownload")) continue;
-    const file = await entry.getFile();
-    if (!newestFile || file.lastModified > newestFile.file.lastModified) {
-      newestFile = { name, file };
-    }
-  }
-  return newestFile;
+async function captureTabHtml(tabId) {
+  const [result] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const doctype = document.doctype ? new XMLSerializer().serializeToString(document.doctype) : "";
+      return { html: doctype + document.documentElement.outerHTML, url: location.href };
+    },
+  });
+  return result.result;
 }
 
-async function moveNewestOverrideFile(sourceDirectory, destinationDirectory) {
-  const newestFile = await findNewestOverrideFile(sourceDirectory);
-  if (!newestFile) {
-    const destinationFile = await findNewestOverrideFile(destinationDirectory);
-    if (!destinationFile) throw new Error("No files were found in the source or destination folder.");
-    return destinationFile.name;
-  }
+const FILE_NAME_PARAMS = ["TripType", "FromCode", "ToCode", "FromDate", "ToDate"];
+const SEGMENT_FILE_NAME_PARAMS = ["TripType", "Segments"];
 
-  const destinationFile = await destinationDirectory.getFileHandle(newestFile.name, { create: true });
-  const writer = await destinationFile.createWritable();
+function overrideFileName(pageUrl, date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  let params = new URLSearchParams();
+  try { params = new URL(pageUrl).searchParams; } catch { /* no usable URL */ }
+  const keys = params.get("Segments") ? SEGMENT_FILE_NAME_PARAMS : FILE_NAME_PARAMS;
+  const parts = keys
+    .map((key) => (params.get(key) || "").replace(/_Economy/g, "").replace(/\s+/g, "").replace(/[^A-Za-z0-9_~-]+/g, ""))
+    .filter(Boolean);
+  const timestamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}` +
+    `${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  return ["SearchFight", ...parts, timestamp].join("-") + ".html";
+}
+
+function withTitle(html, title) {
+  const titleTag = `<title>${title}</title>`;
+  if (/<title[\s>]/i.test(html)) return html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, () => titleTag);
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (head) => head + titleTag);
+  return html;
+}
+
+async function savePageHtml(destinationDirectory, { html, url }) {
+  const name = overrideFileName(url);
+  const handle = await destinationDirectory.getFileHandle(name, { create: true });
+  const writer = await handle.createWritable();
   try {
-    await writer.write(newestFile.file);
+    await writer.write(withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, "")));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
-    catch (abortError) { console.warn("Could not abort the incomplete page override copy", abortError); }
+    catch (abortError) { console.warn("Could not abort the incomplete page save", abortError); }
     throw error;
   }
-  await sourceDirectory.removeEntry(newestFile.name);
-  return newestFile.name;
+  try { await updateIndex(destinationDirectory, { name, url }); }
+  catch (error) { console.warn("Could not update index.html", error); }
+  return name;
 }
-
 async function readSavedOverrideDirectories() {
   const database = await new Promise((resolve, reject) => {
     const request = indexedDB.open("devtoolkit-page-override", 1);
@@ -59,5 +75,29 @@ async function readSavedOverrideDirectories() {
     });
   } finally {
     database.close();
+  }
+}
+
+
+// Keeps index.json (data) and index.html (viewer) in the destination folder in sync with saved pages.
+async function updateIndex(destinationDirectory, { name, url }) {
+  let entries = [];
+  try {
+    const file = await (await destinationDirectory.getFileHandle("index.json")).getFile();
+    const parsed = JSON.parse(await file.text());
+    if (Array.isArray(parsed)) entries = parsed;
+  } catch { /* no index yet */ }
+  const tripTypeFromName = (n) => n.replace(/\.html$/, "").split("-")[1] || "";
+  let tripType = "";
+  try { tripType = new URL(url).searchParams.get("TripType") || ""; } catch { /* no usable URL */ }
+  entries = [{ name, tripType: tripType || tripTypeFromName(name) }, ...entries
+    .filter((e) => e.name !== name)
+    .map(({ name: entryName, tripType: entryTripType }) =>
+      ({ name: entryName, tripType: entryTripType || tripTypeFromName(entryName) }))];
+  const template = await (await fetch(chrome.runtime.getURL("index-template.html"))).text();
+  for (const [fileName, content] of [["index.json", JSON.stringify(entries, null, 2)], ["index.html", template]]) {
+    const writer = await (await destinationDirectory.getFileHandle(fileName, { create: true })).createWritable();
+    await writer.write(content);
+    await writer.close();
   }
 }

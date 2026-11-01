@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Page Override – Saved Pages</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px; background: #0f1218; color: #e6e9ef; }
+      #tables { display: grid; gap: 16px; align-items: start; width: 100%; }
+      table { table-layout: fixed; }
+      td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      td:first-child a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+      .bar { position: relative; margin: 0 0 8px; }
+      #filter { width: 100%; box-sizing: border-box; padding-right: 70px; font: inherit; padding: 9px 12px; color: inherit; background: #181c25; border: 1px solid #2a3040; border-radius: 10px; outline: none; transition: border-color .15s, box-shadow .15s; }
+      #filter::placeholder { color: #6b7385; }
+      #filter:focus { border-color: #5b8def; box-shadow: 0 0 0 3px rgba(91, 141, 239, .25); }
+      .bar.hidden { display: none; }
+      .th-inner { display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 8px; }
+      .th-inner span { grid-column: 2; text-align: center; }
+      .th-inner .filter-btn { grid-column: 3; }
+      th .filter-btn { width: 24px; height: 24px; color: #5f6677; }
+      th .filter-btn:hover { color: #8b93a7; }
+      #count { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #8b93a7; pointer-events: none; }
+      button { font: inherit; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; color: #5f6677; background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: background .15s, color .15s; }
+      button:hover { background: rgba(255, 255, 255, .08); color: #8b93a7; }
+      tbody tr.armed td, tbody tr.armed:hover td { background: rgba(255, 90, 90, .18); }
+      tbody tr.armed button, tbody tr.armed button:hover { font-weight: 900; color: #ff4d4d; background: transparent; }
+      table { width: 100%; border-collapse: separate; border-spacing: 0; background: #151922; border: 1px solid #232938; border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid #232938; vertical-align: middle; }
+      th { font-size: 16px; font-weight: 700; letter-spacing: .04em; color: #e6e9ef; background: #1a1f2b; }
+      tbody tr:last-child td { border-bottom: none; }
+      tbody tr:hover td { background: #1b2130; }
+      td:last-child { text-align: right; padding-left: 0; padding-right: 8px; }
+      td:first-child { padding-right: 4px; }
+      a { color: #7aa7ff; text-decoration: none; }
+      a:hover { color: #a9c4ff; text-decoration: underline; }
+      #status { margin: 0 0 8px; color: #8b93a7; }
+      #status:empty { display: none; }
+    </style>
+  </head>
+  <body>
+    <div class="bar hidden">
+      <input id="filter" placeholder="Filter">
+      <span id="count"></span>
+    </div>
+    <p id="status"></p>
+    <div id="tables"></div>
+    <script>
+      const tables = document.getElementById("tables");
+      const bar = document.querySelector(".bar");
+      const statusEl = document.getElementById("status");
+      const filterEl = document.getElementById("filter");
+      let entries = [];
+      let dir = null;
+      let armedRow = null;
+
+      function disarm() {
+        if (armedRow) armedRow.classList.remove("armed");
+        armedRow = null;
+      }
+      // Clicking anywhere else, or pressing Esc, cancels a pending delete.
+      document.addEventListener("click", disarm);
+      document.addEventListener("keydown", (event) => { if (event.key === "Escape") disarm(); });
+
+      async function load() {
+        try {
+          const res = await fetch("index.json", { cache: "no-store" });
+          entries = res.ok ? await res.json() : [];
+        } catch { entries = []; }
+        render();
+      }
+
+      function render() {
+        const q = filterEl.value.trim().toLowerCase();
+        const shown = entries
+          .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q))
+          // Sort by TripType; Array.sort is stable, so newest stays first within a trip type.
+          .sort((a, b) => (a.tripType || "").localeCompare(b.tripType || ""));
+        document.getElementById("count").textContent = shown.length + "/" + entries.length;
+        tables.textContent = "";
+        // One table per TripType (up to 4), laid out side by side across the full viewport width.
+        const groups = new Map();
+        for (const e of shown) {
+          const key = e.tripType || "Unknown";
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(e);
+        }
+        tables.style.gridTemplateColumns = "repeat(" + Math.max(groups.size, 1) + ", minmax(0, 1fr))";
+        for (const [tripType, items] of groups) {
+          const table = document.createElement("table");
+          const head = document.createElement("thead");
+          const headRow = document.createElement("tr");
+          const th = document.createElement("th");
+          th.colSpan = 2;
+          const title = document.createElement("span");
+          title.textContent = tripType + " (" + items.length + ")";
+          const filterBtn = document.createElement("button");
+          filterBtn.className = "filter-btn";
+          filterBtn.title = "Filter";
+          filterBtn.setAttribute("aria-label", "Filter");
+          filterBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 4h18l-7 8.5V20l-4-2v-5.5z"/></svg>';
+          filterBtn.onclick = (event) => {
+            event.stopPropagation();
+            bar.classList.toggle("hidden");
+            if (bar.classList.contains("hidden")) { filterEl.value = ""; render(); }
+            else filterEl.focus();
+          };
+          const headInner = document.createElement("div");
+          headInner.className = "th-inner";
+          headInner.append(title, filterBtn);
+          th.append(headInner);
+          headRow.append(th);
+          head.append(headRow);
+          const body = document.createElement("tbody");
+          const cols = document.createElement("colgroup");
+          const pageCol = document.createElement("col");
+          const delCol = document.createElement("col");
+          delCol.style.width = "32px";
+          cols.append(pageCol, delCol);
+          table.append(cols, head, body);
+          for (const e of items) {
+            const tr = document.createElement("tr");
+            const a = document.createElement("a");
+            a.href = encodeURIComponent(e.name);
+            let label = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
+            // The TripType is the table heading, so drop it from the start of the label.
+            if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
+            a.textContent = label;
+            a.title = label;
+            const linkCell = document.createElement("td");
+            linkCell.append(a);
+            const del = document.createElement("button");
+            del.textContent = "✕";
+            del.title = "Delete";
+            del.setAttribute("aria-label", "Delete " + e.name);
+            del.onclick = (event) => {
+              event.stopPropagation();
+              // First click arms the row; a second click on the same minus deletes it.
+              if (armedRow === tr) { disarm(); remove(e); return; }
+              disarm();
+              armedRow = tr;
+              tr.classList.add("armed");
+            };
+            const delCell = document.createElement("td");
+            delCell.append(del);
+            tr.append(linkCell, delCell);
+            body.append(tr);
+          }
+          tables.append(table);
+        }
+      }
+
+      // The folder handle is remembered in this origin's IndexedDB so it only has to be picked once.
+      function idb(mode, action) {
+        return new Promise((resolve, reject) => {
+          const open = indexedDB.open("page-override-index", 1);
+          open.onupgradeneeded = () => open.result.createObjectStore("kv");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            const req = action(db.transaction("kv", mode).objectStore("kv"));
+            req.onsuccess = () => { db.close(); resolve(req.result); };
+            req.onerror = () => { db.close(); reject(req.error); };
+          };
+        });
+      }
+
+      async function restoreDir() {
+        try {
+          dir = (await idb("readonly", (s) => s.get("dir"))) || null;
+          if (dir) statusEl.textContent = "";
+        } catch { dir = null; }
+      }
+
+      async function remove(entry) {
+        try {
+          await restored;
+          if (!dir) {
+            // First delete only: ask for the destination folder, then remember it.
+            dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
+            await idb("readwrite", (s) => s.put(dir, "dir"));
+          }
+          if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
+              await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
+            statusEl.textContent = "Folder access was not granted.";
+            return;
+          }
+          await dir.removeEntry(entry.name).catch((err) => { if (err.name !== "NotFoundError") throw err; });
+          entries = entries.filter((e) => e.name !== entry.name);
+          const w = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+          await w.write(JSON.stringify(entries, null, 2));
+          await w.close();
+          statusEl.textContent = "";
+          render();
+        } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Delete failed: " + err.message; }
+      }
+
+      filterEl.oninput = render;
+      const restored = restoreDir();
+      load();
+    </script>
+  </body>
+</html>
+
