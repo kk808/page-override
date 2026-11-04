@@ -23,16 +23,20 @@ async function captureOriginalResponse(tabId) {
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
   try {
-    await chrome.debugger.sendCommand(target, "Page.enable");
+    // Page.enable is costly on heavy pages, so it is only sent if the direct read below is refused.
     const { frameTree } = await chrome.debugger.sendCommand(target, "Page.getFrameTree");
     const { id: frameId, url } = frameTree.frame;
-    const { content, base64Encoded } = await chrome.debugger.sendCommand(target, "Page.getResourceContent", { frameId, url });
+    const read = () => chrome.debugger.sendCommand(target, "Page.getResourceContent", { frameId, url });
+    let resource;
+    try { resource = await read(); }
+    catch { await chrome.debugger.sendCommand(target, "Page.enable"); resource = await read(); }
+    const { content, base64Encoded } = resource;
     const html = base64Encoded
       ? new TextDecoder().decode(Uint8Array.from(atob(content), (c) => c.charCodeAt(0)))
       : content;
     return { html, url };
   } finally {
-    await chrome.debugger.detach(target).catch(() => {});
+    chrome.debugger.detach(target).catch(() => {}); // not awaited: the HTML is already captured
   }
 }
 
