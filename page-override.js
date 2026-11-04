@@ -9,9 +9,65 @@ async function getPageOverrideBaseUrl() {
 async function captureTabHtml(tabId) {
   const [result] = await chrome.scripting.executeScript({
     target: { tabId },
+    // MAIN world so live state (adopted stylesheets, CSSOM rules, shadow roots) is read exactly as the page sees it.
+    world: "MAIN",
     func: () => {
       const doctype = document.doctype ? new XMLSerializer().serializeToString(document.doctype) : "";
-      return { html: doctype + document.documentElement.outerHTML, url: location.href };
+      // Serialize a clone of the live DOM, folding in state that outerHTML alone loses.
+      const cssText = (sheet) => {
+        try { return Array.from(sheet.cssRules, (rule) => rule.cssText).join("\n"); }
+        catch { return null; } // cross-origin sheet: keep the original <link>
+      };
+      const inline = (liveRoot, cloneRoot, styleHost) => {
+        const live = Array.from(liveRoot.querySelectorAll("*"));
+        const clone = Array.from(cloneRoot.querySelectorAll("*"));
+        live.forEach((src, i) => {
+          const dst = clone[i];
+          if (!dst || src.localName !== dst.localName) return;
+          // Rules added via CSSOM (insertRule, CSS-in-JS) never reach the <style> text.
+          if (src.localName === "style" && src.sheet) {
+            const text = cssText(src.sheet);
+            if (text !== null) dst.textContent = text;
+          }
+          // Current form state lives in properties, not attributes.
+          if (src.localName === "input") {
+            if (src.type === "checkbox" || src.type === "radio") dst.toggleAttribute("checked", src.checked);
+            else if (src.type !== "password" && src.type !== "file") dst.setAttribute("value", src.value);
+          } else if (src.localName === "textarea") {
+            dst.textContent = src.value;
+          } else if (src.localName === "option") {
+            dst.toggleAttribute("selected", src.selected);
+          }
+        });
+        // Constructable stylesheets (adoptedStyleSheets) are not in the markup at all.
+        const adopted = Array.from(liveRoot.adoptedStyleSheets || [], cssText).filter((t) => t !== null);
+        if (adopted.length && styleHost) {
+          const style = document.createElement("style");
+          style.setAttribute("data-adopted-stylesheets", "");
+          style.textContent = adopted.join("\n");
+          styleHost.append(style);
+        }
+        // Open shadow roots become declarative shadow DOM so the generated markup is kept.
+        live.forEach((src, i) => {
+          const dst = clone[i];
+          if (!dst || src.localName !== dst.localName || !src.shadowRoot) return;
+          const template = document.createElement("template");
+          template.setAttribute("shadowrootmode", src.shadowRoot.mode);
+          for (const child of src.shadowRoot.childNodes) template.content.append(child.cloneNode(true));
+          inline(src.shadowRoot, template.content, template.content);
+          dst.prepend(template);
+        });
+      };
+      const root = document.documentElement.cloneNode(true);
+      inline(document, root, root.querySelector("head"));
+      // Relative URLs must keep resolving against the original site once the file is served from localhost.
+      const head = root.querySelector("head");
+      if (head && !head.querySelector("base[href]")) {
+        const base = document.createElement("base");
+        base.setAttribute("href", location.href);
+        head.prepend(base);
+      }
+      return { html: doctype + root.outerHTML, url: location.href };
     },
   });
   return result.result;
