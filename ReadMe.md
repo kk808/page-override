@@ -6,7 +6,7 @@
 
 ## Features
 
-- **One-step capture & redirect:** Captures the live rendered HTML (`doctype` + `documentElement.outerHTML`) of the current tab and opens it on your local server in a new tab.
+- **One-step capture & redirect:** Captures the page's original HTML response (the same content DevTools "Override content" saves) of the current tab and opens it on your local server in a new tab.
 - **Keyboard shortcut:** Trigger via toolbar icon click or **`Alt+4`** (`_execute_action`).
 - **Smart flight-search naming:** Automatically derives descriptive snapshot filenames from flight query parameters (`TripType`, `FromCode`, `ToCode`, `FromDate`, `ToDate`, or `Segments`) plus a timestamp.
 - **Tab title tagging:** Updates the saved HTML `<title>` tag to match the snapshot identifier so local override tabs are easy to distinguish.
@@ -48,7 +48,7 @@ Every save also updates `index.json` and `index.html` in the destination folder 
    - Listens to `chrome.action.onClicked`.
    - Reads the saved `destination` `FileSystemDirectoryHandle` from IndexedDB (`devtoolkit-page-override` via `readSavedOverrideDirectories()`). If unset, opens `options.html`.
 2. **Capture Live HTML (`page-override.js`)**
-   - `captureTabHtml()` uses `chrome.scripting.executeScript` on the active tab to serialize `document.doctype` and `document.documentElement.outerHTML`, along with `location.href`.
+   - `captureTabHtml()` briefly attaches `chrome.debugger` and reads the main document via `Page.getResourceContent` (the raw server response, like DevTools "Override content"). If a debugger is already attached (e.g. DevTools is open on the tab), it falls back to re-fetching the page from the HTTP cache.
 3. **Filename & Title Formatting (`page-override.js`)**
    - `overrideFileName()` extracts URL query parameters:
      - When `Segments` is present: `TripType`, `Segments`
@@ -71,7 +71,7 @@ Every save also updates `index.json` and `index.html` in the destination folder 
 
 | File | Purpose |
 | --- | --- |
-| `manifest.json` | Manifest V3 configuration, permissions (`storage`, `activeTab`, `scripting`), and `Alt+4` shortcut. |
+| `manifest.json` | Manifest V3 configuration, permissions (`storage`, `activeTab`, `scripting`, `debugger`), and `Alt+4` shortcut. |
 | `background.js` | Service worker handling toolbar/shortcut triggers, permission checks, tab redirection, and error badges. |
 | `page-override.js` | Shared helpers for DOM capture, filename generation, `<title>` rewriting, file saving, and IndexedDB lookup. |
 | `options.html` / `options.js` | Settings UI for choosing/clearing the local destination directory and configuring the `localhost` base URL. |
