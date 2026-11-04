@@ -6,7 +6,7 @@
 
 ## Features
 
-- **One-step capture & redirect:** Captures the live rendered HTML (`doctype` + `documentElement.outerHTML`) of the current tab and opens it on your local server in the same tab.
+- **One-step capture & redirect:** Captures the live rendered HTML (`doctype` + `documentElement.outerHTML`) of the current tab and opens it on your local server in a new tab.
 - **Keyboard shortcut:** Trigger via toolbar icon click or **`Alt+4`** (`_execute_action`).
 - **Smart flight-search naming:** Automatically derives descriptive snapshot filenames from flight query parameters (`TripType`, `FromCode`, `ToCode`, `FromDate`, `ToDate`, or `Segments`) plus a timestamp.
 - **Tab title tagging:** Updates the saved HTML `<title>` tag to match the snapshot identifier so local override tabs are easy to distinguish.
@@ -36,7 +36,7 @@ Every save also updates `index.json` and `index.html` in the destination folder 
 1. Navigate to the page you want to capture (e.g., a live or staging flight search results page).
 2. Click the **Page Override** toolbar icon or press **`Alt+4`**.
 3. If Chrome requires re-confirming folder write access after a browser restart, click **Grant access and open page** on the prompt page.
-4. The HTML snapshot is written to your destination folder and the current tab automatically navigates to `<Base URL><Snapshot Filename>`.
+4. The HTML snapshot is written to your destination folder and a new tab opens at `<Base URL><Snapshot Filename>`.
 
 > If an error occurs, the extension displays a `!` badge on its toolbar icon—hover over the icon to view the error message.
 

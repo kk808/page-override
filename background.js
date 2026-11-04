@@ -25,12 +25,12 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
       // Chrome drops folder access when no extension page is open; re-granting needs a click.
       await chrome.storage.session.set({ pendingPage: page });
-      await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
+      await chrome.tabs.create({ url: chrome.runtime.getURL("grant.html"), index: tab.index + 1, openerTabId: tabId });
       return;
     }
     const name = await savePageHtml(saved.destination, page);
     const baseUrl = await getPageOverrideBaseUrl();
-    await chrome.tabs.update(tabId, { url: `${baseUrl}${encodeURIComponent(name)}` });
+    await chrome.tabs.create({ url: `${baseUrl}${encodeURIComponent(name)}`, index: tab.index + 1, openerTabId: tabId });
     await setBadge(tabId, "", "Page Override");
   } catch (error) {
     console.warn("Could not run Page Override", error);

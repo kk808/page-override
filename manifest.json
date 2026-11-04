@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Page Override",
   "version": "0.1.0",
-  "description": "Saves the current page HTML to a folder and opens it on localhost in the current tab.",
+  "description": "Saves the current page HTML to a folder and opens it on localhost in a new tab.",
   "minimum_chrome_version": "116",
   "background": { "service_worker": "background.js" },
   "commands": {
