@@ -104,6 +104,17 @@ document.getElementById("reset-url").addEventListener("click", async () => {
   status.textContent = "Base URL reset to default.";
 });
 
+const captureOriginalInput = document.getElementById("capture-original");
+chrome.storage.local.get("captureOriginalResponse").then(({ captureOriginalResponse }) => {
+  captureOriginalInput.checked = Boolean(captureOriginalResponse);
+});
+captureOriginalInput.addEventListener("change", async () => {
+  await chrome.storage.local.set({ captureOriginalResponse: captureOriginalInput.checked });
+  status.textContent = captureOriginalInput.checked
+    ? "Capturing the original server response (uses the debugger)."
+    : "Capturing the current rendered page.";
+});
+
 loadBaseUrl().catch((error) => { status.textContent = String(error.message || error); });
 
 refresh().catch((error) => { status.textContent = String(error.message || error); });

@@ -5,7 +5,7 @@
     <title>SearchFlights - Test Pages</title>
     <style>
       :root { color-scheme: dark; }
-      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px; background: #0f1218; color: #e6e9ef; }
+      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 72px; background: #0f1218; color: #e6e9ef; }
       #tables { display: grid; gap: 16px; align-items: start; width: 100%; }
       table { table-layout: fixed; }
       td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -37,6 +37,9 @@
       a:hover { color: #a9c4ff; text-decoration: underline; }
       #status { margin: 0 0 8px; color: #8b93a7; }
       #status:empty { display: none; }
+      #reset { position: fixed; right: 24px; bottom: 20px; width: auto; height: auto; padding: 7px 16px; font-size: 13px; color: #8b93a7; background: #181c25; border: 1px solid #2a3040; border-radius: 8px; }
+      #reset:hover { background: #202634; color: #c9ceda; border-color: #3a4258; }
+      #reset.armed, #reset.armed:hover { background: #c93b3b; border-color: #ff5c5c; color: #fff; font-weight: 600; }
     </style>
   </head>
   <body>
@@ -46,18 +49,23 @@
     </div>
     <p id="status"></p>
     <div id="tables"></div>
+    <button id="reset" type="button">Reset</button>
     <script>
       const tables = document.getElementById("tables");
+      const resetBtn = document.getElementById("reset");
       const bar = document.querySelector(".bar");
       const statusEl = document.getElementById("status");
       const filterEl = document.getElementById("filter");
       let entries = [];
       let dir = null;
       let armedRow = null;
+      let resetArmed = false;
 
       function disarm() {
         if (armedRow) armedRow.classList.remove("armed");
         armedRow = null;
+        if (resetArmed) resetBtn.classList.remove("armed");
+        resetArmed = false;
       }
       // Clicking anywhere else, or pressing Esc, cancels a pending delete.
       document.addEventListener("click", disarm);
@@ -173,19 +181,24 @@
         } catch { dir = null; }
       }
 
+      async function ensureWritableDir() {
+        await restored;
+        if (!dir) {
+          // First delete/reset only: ask for the destination folder, then remember it.
+          dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
+          await idb("readwrite", (s) => s.put(dir, "dir"));
+        }
+        if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
+            await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
+          statusEl.textContent = "Folder access was not granted.";
+          return false;
+        }
+        return true;
+      }
+
       async function remove(entry) {
         try {
-          await restored;
-          if (!dir) {
-            // First delete only: ask for the destination folder, then remember it.
-            dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
-            await idb("readwrite", (s) => s.put(dir, "dir"));
-          }
-          if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
-              await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
-            statusEl.textContent = "Folder access was not granted.";
-            return;
-          }
+          if (!(await ensureWritableDir())) return;
           await dir.removeEntry(entry.name).catch((err) => { if (err.name !== "NotFoundError") throw err; });
           entries = entries.filter((e) => e.name !== entry.name);
           const w = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
@@ -195,6 +208,37 @@
           render();
         } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Delete failed: " + err.message; }
       }
+
+      async function resetAll() {
+        try {
+          if (!(await ensureWritableDir())) return;
+          const names = new Set(entries.map((e) => e.name));
+          try {
+            const file = await (await dir.getFileHandle("index.json")).getFile();
+            const onDisk = JSON.parse(await file.text());
+            if (Array.isArray(onDisk)) for (const e of onDisk) if (e?.name) names.add(e.name);
+          } catch { /* ignore missing or unreadable index.json */ }
+          names.delete("index.html");
+          names.delete("index.json");
+          await Promise.all(Array.from(names, (name) =>
+            dir.removeEntry(name).catch((err) => { if (err.name !== "NotFoundError") throw err; })
+          ));
+          entries = [];
+          const w = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+          await w.write("[]\n");
+          await w.close();
+          statusEl.textContent = "";
+          render();
+        } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Reset failed: " + err.message; }
+      }
+
+      resetBtn.onclick = (event) => {
+        event.stopPropagation();
+        if (resetArmed) { disarm(); resetAll(); return; }
+        disarm();
+        resetArmed = true;
+        resetBtn.classList.add("armed");
+      };
 
       filterEl.oninput = render;
       const restored = restoreDir();
