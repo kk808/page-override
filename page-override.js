@@ -95,7 +95,7 @@ async function captureOriginalResponse(tabId) {
   try {
     // Page.enable is costly on heavy pages, so it is only sent if the direct read below is refused.
     const { frameTree } = await chrome.debugger.sendCommand(target, "Page.getFrameTree");
-    const { id: frameId, url } = frameTree.frame;
+    const { id: frameId, url, urlFragment = "" } = frameTree.frame;
     const read = () => chrome.debugger.sendCommand(target, "Page.getResourceContent", { frameId, url });
     let resource;
     try { resource = await read(); }
@@ -104,7 +104,7 @@ async function captureOriginalResponse(tabId) {
     const html = base64Encoded
       ? new TextDecoder().decode(Uint8Array.from(atob(content), (c) => c.charCodeAt(0)))
       : content;
-    return { html, url };
+    return { html, url: url + urlFragment };
   } finally {
     chrome.debugger.detach(target).catch(() => {}); // not awaited: the HTML is already captured
   }
@@ -147,12 +147,24 @@ function withTitle(html, title) {
   return html;
 }
 
+function withOriginalUrlDoubleClick(html, url) {
+  const safeUrl = JSON.stringify(url).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  const script = `<script>
+window.addEventListener("dblclick", (event) => {
+  if (document.body && document.body.contains(event.target)) location.assign(${safeUrl});
+}, true);
+</script>`;
+  if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, (head) => script + head);
+  return html + script;
+}
+
 async function savePageHtml(destinationDirectory, { html, url }) {
   const name = overrideFileName(url);
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
-    await writer.write(withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, "")));
+    const titledHtml = withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, ""));
+    await writer.write(withOriginalUrlDoubleClick(titledHtml, url));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
