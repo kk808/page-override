@@ -6,7 +6,7 @@
 
 ## Features
 
-- **One-step capture & redirect:** Captures the page's original HTML response (the same content DevTools "Override content" saves) of the current tab and opens it on your local server in a new tab.
+- **One-step capture & redirect:** Captures the current rendered page, or optionally the page's original HTML response (the same content DevTools "Override content" saves) of the current tab and opens it on your local server in a new tab.
 - **Keyboard shortcut:** Trigger via toolbar icon click or **`Alt+4`** (`_execute_action`).
 - **Smart flight-search naming:** Automatically derives descriptive snapshot filenames from flight query parameters (`TripType`, `FromCode`, `ToCode`, `FromDate`, `ToDate`, or `Segments`) plus a timestamp.
 - **Tab title tagging:** Updates the saved HTML `<title>` tag to match the snapshot identifier so local override tabs are easy to distinguish.
@@ -48,7 +48,9 @@ Every save also updates `index.json` and `index.html` in the destination folder 
    - Listens to `chrome.action.onClicked`.
    - Reads the saved `destination` `FileSystemDirectoryHandle` from IndexedDB (`devtoolkit-page-override` via `readSavedOverrideDirectories()`). If unset, opens `options.html`.
 2. **Capture Live HTML (`page-override.js`)**
-   - `captureTabHtml()` briefly attaches `chrome.debugger` and reads the main document via `Page.getResourceContent` (the raw server response, like DevTools "Override content"). If a debugger is already attached (e.g. DevTools is open on the tab), it falls back to re-fetching the page from the HTTP cache.
+   - `captureTabHtml()` checks the **Capture Original Response** option (Options page, off by default):
+     - **Off:** `captureRenderedHtml()` serializes the current rendered DOM in the tab (CSS added by scripts, adopted stylesheets, form state, open shadow roots, plus a `<base href>`). Fast, no debugger.
+     - **On:** `captureOriginalResponse()` briefly attaches `chrome.debugger` and reads the main document via `Page.getResourceContent` (the raw server response, like DevTools "Override content"). If a debugger is already attached (e.g. DevTools is open on the tab), it falls back to re-fetching the page from the HTTP cache.
 3. **Filename & Title Formatting (`page-override.js`)**
    - `overrideFileName()` extracts URL query parameters:
      - When `Segments` is present: `TripType`, `Segments`
