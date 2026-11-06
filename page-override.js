@@ -151,7 +151,7 @@ function withOriginalUrlDoubleClick(html, url) {
   const safeUrl = JSON.stringify(url).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   const script = `<script>
 window.addEventListener("dblclick", (event) => {
-  if (document.body && document.body.contains(event.target)) location.assign(${safeUrl});
+  if (document.body && document.body.contains(event.target)) window.open(${safeUrl}, "_blank", "noopener,noreferrer");
 }, true);
 </script>`;
   if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, (head) => script + head);

@@ -19,22 +19,29 @@ function assertDoubleClickHandler(html, expectedUrl) {
   let capture;
   const bodyTarget = {};
   const body = { contains: (target) => target === bodyTarget || target === body };
-  const navigations = [];
+  const opened = [];
   vm.runInNewContext(match[1], {
-    window: { addEventListener(type, listener, options) {
-      assert.equal(type, "dblclick");
-      handler = listener;
-      capture = options;
-    } },
+    window: {
+      addEventListener(type, listener, options) {
+        assert.equal(type, "dblclick");
+        handler = listener;
+        capture = options;
+      },
+      open(url, target, features) {
+        opened.push({ url, target, features });
+      },
+    },
     document: { body },
-    location: { assign: (url) => navigations.push(url) },
   });
   assert.equal(capture, true);
   handler({ target: {} });
-  assert.deepEqual(navigations, []);
+  assert.deepEqual(opened, []);
   handler({ target: bodyTarget });
   handler({ target: body });
-  assert.deepEqual(navigations, [expectedUrl, expectedUrl]);
+  assert.deepEqual(opened, [
+    { url: expectedUrl, target: "_blank", features: "noopener,noreferrer" },
+    { url: expectedUrl, target: "_blank", features: "noopener,noreferrer" },
+  ]);
 }
 
 test("saved HTML includes a body double-click handler with the exact captured URL", async () => {
