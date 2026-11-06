@@ -209,7 +209,7 @@ async function updateIndex(destinationDirectory, { name, url }) {
   const tripTypeFromName = (n) => n.replace(/\.html$/, "").split("-")[1] || "";
   let tripType = "";
   try { tripType = new URL(url).searchParams.get("TripType") || ""; } catch { /* no usable URL */ }
-  entries = [{ name, tripType: tripType || tripTypeFromName(name) }, ...entries
+  entries = [{ name, tripType: tripType || "Other" }, ...entries
     .filter((e) => e.name !== name)
     .map(({ name: entryName, tripType: entryTripType }) =>
       ({ name: entryName, tripType: entryTripType || tripTypeFromName(entryName) }))];

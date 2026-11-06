@@ -69,6 +69,43 @@ test("saved HTML includes a body double-click handler with the exact captured UR
   assert.ok(files.has("index.html"));
 });
 
+test("saved index entries use Other for missing trip types and retain known trip types", async () => {
+  const files = new Map();
+  const destination = {
+    async getFileHandle(name, options) {
+      if (!options?.create) {
+        if (!files.has(name)) throw new Error("File not found");
+        return { async getFile() { return { text: async () => files.get(name) }; } };
+      }
+      return { async createWritable() {
+        return {
+          async write(content) { files.set(name, content); },
+          async close() {},
+        };
+      } };
+    },
+  };
+  const context = loadHelpers({
+    chrome: { runtime: { getURL: (name) => name } },
+    fetch: async () => ({ text: async () => "<html>index</html>" }),
+  });
+  context.destination = destination;
+
+  await vm.runInContext(
+    'updateIndex(destination, { name: "SearchFight-20261106185414.html", url: "https://example.test/search" })',
+    context,
+  );
+  await vm.runInContext(
+    'updateIndex(destination, { name: "SearchFight-Return-20261106185415.html", url: "https://example.test/search?TripType=Return" })',
+    context,
+  );
+
+  assert.deepEqual(JSON.parse(files.get("index.json")), [
+    { name: "SearchFight-Return-20261106185415.html", tripType: "Return" },
+    { name: "SearchFight-20261106185414.html", tripType: "Other" },
+  ]);
+});
+
 test("documents without a head still receive the handler", () => {
   const context = loadHelpers();
   context.html = "<!doctype html><body>Saved</body>";
