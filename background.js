@@ -10,6 +10,15 @@ async function setBadge(tabId, text, title) {
   ]);
 }
 
+// The saved index page (served from localhost) asks for each page's latest HTML; it writes the files itself.
+chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+  if (message?.type !== "fetchUpdatedPage") return false;
+  fetchUpdatedPageHtml(message)
+    .then((html) => sendResponse({ html }))
+    .catch((error) => sendResponse({ error: error.message || String(error) }));
+  return true;
+});
+
 chrome.action.onClicked.addListener(async (tab) => {
   if (inProgress) return;
   inProgress = true;

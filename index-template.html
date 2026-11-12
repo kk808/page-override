@@ -37,9 +37,26 @@
       a:hover { color: #a9c4ff; text-decoration: underline; }
       #status { margin: 0 0 8px; color: #8b93a7; }
       #status:empty { display: none; }
-      #reset { position: fixed; right: 24px; bottom: 20px; width: auto; height: auto; padding: 11px 24px; font-size: 15px; font-weight: 600; letter-spacing: .02em; color: #ff8a8a; background: #2a1a1e; border: 1px solid #a8434b; border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+      #actions { position: fixed; right: 24px; bottom: 20px; display: flex; align-items: center; gap: 12px; }
+      #actions button { width: auto; height: auto; padding: 11px 24px; font-size: 15px; font-weight: 600; letter-spacing: .02em; border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+      #reset { color: #ff8a8a; background: #2a1a1e; border: 1px solid #a8434b; }
       #reset:hover { background: #3a2026; color: #ffb0b0; border-color: #d9575f; }
       #reset.armed, #reset.armed:hover { background: #d93a3a; border-color: #ff6b6b; color: #fff; font-weight: 700; }
+      #update { color: #7be0a0; background: #14301f; border: 1px solid #2f8f55; }
+      #update:hover { background: #1b4128; color: #a6f0c0; border-color: #3fb46c; }
+      #update.armed, #update.armed:hover { background: #22a455; border-color: #52d887; color: #fff; font-weight: 700; }
+      #update:disabled { opacity: .6; cursor: default; }
+      #progress { display: none; position: fixed; left: 50%; transform: translateX(-50%); width: 50vw; bottom: 28px; align-items: center; gap: 10px; font-size: 13px; color: #8b93a7; opacity: 1; transition: opacity .8s ease; }
+      #progress.fading { opacity: 0; }
+      #check { display: none; flex: none; }
+      #progress.done #check { display: block; }
+      #check circle { fill: none; stroke: #2fb463; stroke-width: 2; stroke-dasharray: 63; stroke-dashoffset: 63; }
+      #check path { fill: none; stroke: #52d887; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 20; stroke-dashoffset: 20; }
+      #progress.done #check circle { animation: check-draw .5s ease forwards; }
+      #progress.done #check path { animation: check-draw .35s .4s ease forwards; }
+      @keyframes check-draw { to { stroke-dashoffset: 0; } }
+      #progress.active { display: flex; }
+      #progress progress { flex: 1; height: 10px; accent-color: #2fb463; }
     </style>
   </head>
   <body>
@@ -49,10 +66,19 @@
     </div>
     <p id="status"></p>
     <div id="tables"></div>
-    <button id="reset" type="button">Delete All</button>
+    <div id="progress"><progress id="progressBar" value="0" max="1"></progress><svg id="check" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M7 12.5l3.2 3.2L17 8.8"/></svg><span id="progressText"></span></div>
+    <div id="actions">
+      <button id="update" type="button">Update All</button>
+      <button id="reset" type="button">Delete All</button>
+    </div>
     <script>
+      const EXTENSION_ID = "__EXTENSION_ID__";
       const tables = document.getElementById("tables");
       const resetBtn = document.getElementById("reset");
+      const updateBtn = document.getElementById("update");
+      const progressEl = document.getElementById("progress");
+      const progressBar = document.getElementById("progressBar");
+      const progressText = document.getElementById("progressText");
       const bar = document.querySelector(".bar");
       const statusEl = document.getElementById("status");
       const filterEl = document.getElementById("filter");
@@ -60,12 +86,16 @@
       let dir = null;
       let armedRow = null;
       let resetArmed = false;
+      let updateArmed = false;
+      let updating = false;
 
       function disarm() {
         if (armedRow) armedRow.classList.remove("armed");
         armedRow = null;
         if (resetArmed) resetBtn.classList.remove("armed");
         resetArmed = false;
+        if (updateArmed) updateBtn.classList.remove("armed");
+        updateArmed = false;
       }
       // Clicking anywhere else, or pressing Esc, cancels a pending delete.
       document.addEventListener("click", disarm);
@@ -232,12 +262,78 @@
         } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Reset failed: " + err.message; }
       }
 
+      function fetchUpdated(entry, snapshot) {
+        return new Promise((resolve, reject) => {
+          if (!window.chrome?.runtime?.sendMessage || EXTENSION_ID.startsWith("__")) {
+            reject(new Error("Page Override extension is not reachable. Save a page once to refresh this index."));
+            return;
+          }
+          chrome.runtime.sendMessage(EXTENSION_ID, { type: "fetchUpdatedPage", name: entry.name, url: entry.url, snapshot }, (reply) => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else if (!reply || reply.error) reject(new Error(reply?.error || "No response from extension."));
+            else resolve(reply.html);
+          });
+        });
+      }
+
+      async function updateAll() {
+        if (updating || !entries.length) return;
+        updating = true;
+        updateBtn.disabled = true;
+        resetBtn.disabled = true;
+        const list = entries.slice();
+        const failures = [];
+        try {
+          if (!(await ensureWritableDir())) return;
+          progressEl.classList.remove("done", "fading");
+          progressEl.classList.add("active");
+          progressBar.max = list.length;
+          progressBar.value = 0;
+          statusEl.textContent = "";
+          for (let i = 0; i < list.length; i++) {
+            const entry = list[i];
+            progressText.textContent = "Updating " + (i + 1) + " of " + list.length + "…";
+            try {
+              let snapshot;
+              if (!entry.url) snapshot = await (await (await dir.getFileHandle(entry.name)).getFile()).text();
+              const html = await fetchUpdated(entry, snapshot);
+              const w = await (await dir.getFileHandle(entry.name, { create: true })).createWritable();
+              try { await w.write(html); await w.close(); }
+              catch (err) { await w.abort().catch(() => {}); throw err; }
+            } catch (err) { failures.push(entry.name + ": " + err.message); }
+            progressBar.value = i + 1;
+          }
+          progressText.textContent = "Updated " + (list.length - failures.length) + " of " + list.length;
+          progressEl.classList.add("done");
+          setTimeout(() => {
+            progressEl.classList.add("fading");
+            setTimeout(() => progressEl.classList.remove("active", "done", "fading"), 800);
+          }, 2500);
+          if (failures.length) statusEl.textContent = "Some pages failed: " + failures.join(" | ");
+        } catch (err) {
+          if (err.name !== "AbortError") statusEl.textContent = "Update failed: " + err.message;
+          progressEl.classList.remove("active");
+        } finally {
+          updating = false;
+          updateBtn.disabled = false;
+          resetBtn.disabled = false;
+        }
+      }
+
       resetBtn.onclick = (event) => {
         event.stopPropagation();
         if (resetArmed) { disarm(); resetAll(); return; }
         disarm();
         resetArmed = true;
         resetBtn.classList.add("armed");
+      };
+
+      updateBtn.onclick = (event) => {
+        event.stopPropagation();
+        if (updateArmed) { disarm(); updateAll(); return; }
+        disarm();
+        updateArmed = true;
+        updateBtn.classList.add("armed");
       };
 
       filterEl.oninput = render;

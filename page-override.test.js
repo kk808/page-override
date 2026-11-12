@@ -367,7 +367,7 @@ test("index action refreshes directly or hands off to the permission page", asyn
         setBadgeBackgroundColor: async () => {},
         setTitle: async () => {},
       },
-      runtime: { getURL: (name) => `chrome-extension://test/${name}` },
+      runtime: { getURL: (name) => `chrome-extension://test/${name}`, onMessageExternal: { addListener: () => {} } },
       tabs: {
         reload: async (id) => calls.push(["reload", id]),
         update: async (id, value) => calls.push(["update", id, value.url]),

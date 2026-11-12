@@ -241,12 +241,32 @@ async function savePageHtml(destinationDirectory, { html, url, name: existingNam
   return name;
 }
 
+function finalizePageHtml({ html, url, name }) {
+  const titledHtml = withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, ""));
+  return withOriginalUrlDoubleClick(titledHtml, url);
+}
+
+// Used by the saved index page ("Update All"): fetches the latest HTML so the page can write it under the same name.
+async function fetchUpdatedPageHtml({ name, url, snapshot }) {
+  if (typeof name !== "string" || !/^[^/\\]+\.html$/i.test(name) || name.toLowerCase() === "index.html") {
+    throw new Error("Invalid snapshot filename.");
+  }
+  const originalUrl = url || extractOriginalUrl(snapshot);
+  let parsedUrl;
+  try { parsedUrl = new URL(originalUrl); }
+  catch { throw new Error("No valid original URL."); }
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    throw new Error("Original URL must use HTTP or HTTPS.");
+  }
+  const page = await fetchOriginalPage(originalUrl);
+  return finalizePageHtml({ ...page, name });
+}
+
 async function writePageHtml(destinationDirectory, { html, url, name }) {
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
-    const titledHtml = withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, ""));
-    await writer.write(withOriginalUrlDoubleClick(titledHtml, url));
+    await writer.write(finalizePageHtml({ html, url, name }));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
@@ -357,7 +377,8 @@ async function updateIndex(destinationDirectory, { name, url }) {
       ...entry,
       tripType: entry.tripType || tripTypeFromName(entry.name),
     }))];
-  const template = await (await fetch(chrome.runtime.getURL("index-template.html"))).text();
+  const template = (await (await fetch(chrome.runtime.getURL("index-template.html"))).text())
+    .replace("__EXTENSION_ID__", chrome.runtime.id);
   for (const [fileName, content] of [["index.json", JSON.stringify(entries, null, 2)], ["index.html", template]]) {
     const writer = await (await destinationDirectory.getFileHandle(fileName, { create: true })).createWritable();
     await writer.write(content);
