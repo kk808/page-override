@@ -18,7 +18,7 @@
 
 ## Saved Pages Index
 
-Every save also updates `index.json` and `index.html` in the destination folder (from `index-template.html`). Open `<Base URL>index.html` (e.g. `http://localhost:8080/Shopping/index.html`) to list, filter and open all saved pages. To delete a single page, click its `✕` icon twice (the first click highlights the row; `Esc` or clicking outside cancels). To clear everything, click **Reset** at the bottom-right twice to remove all saved page files and empty `index.json`. The first delete or reset prompts for the destination folder once and remembers it.
+Every save also updates `index.json` and `index.html` in the destination folder (from `index-template.html`). Open `<Base URL>index.html` (e.g. `http://localhost:8080/Shopping/index.html`) to list, filter and open all saved pages. To delete a single page, click its `✕` icon twice (the first click highlights the row; `Esc` or clicking outside cancels). To clear everything, click **Delete All** at the bottom-right twice to remove all saved page files and empty `index.json`. The first delete or **Delete All** prompts for the destination folder once and remembers it.
 
 ---
 

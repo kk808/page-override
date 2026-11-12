@@ -5,7 +5,7 @@
     <title>SearchFlights - Test Pages</title>
     <style>
       :root { color-scheme: dark; }
-      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 72px; background: #0f1218; color: #e6e9ef; }
+      body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 96px; background: #0f1218; color: #e6e9ef; }
       #tables { display: grid; gap: 16px; align-items: start; width: 100%; }
       table { table-layout: fixed; }
       td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -37,9 +37,9 @@
       a:hover { color: #a9c4ff; text-decoration: underline; }
       #status { margin: 0 0 8px; color: #8b93a7; }
       #status:empty { display: none; }
-      #reset { position: fixed; right: 24px; bottom: 20px; width: auto; height: auto; padding: 7px 16px; font-size: 13px; color: #8b93a7; background: #181c25; border: 1px solid #2a3040; border-radius: 8px; }
-      #reset:hover { background: #202634; color: #c9ceda; border-color: #3a4258; }
-      #reset.armed, #reset.armed:hover { background: #c93b3b; border-color: #ff5c5c; color: #fff; font-weight: 600; }
+      #reset { position: fixed; right: 24px; bottom: 20px; width: auto; height: auto; padding: 11px 24px; font-size: 15px; font-weight: 600; letter-spacing: .02em; color: #ff8a8a; background: #2a1a1e; border: 1px solid #a8434b; border-radius: 10px; box-shadow: 0 4px 14px rgba(0, 0, 0, .45); }
+      #reset:hover { background: #3a2026; color: #ffb0b0; border-color: #d9575f; }
+      #reset.armed, #reset.armed:hover { background: #d93a3a; border-color: #ff6b6b; color: #fff; font-weight: 700; }
     </style>
   </head>
   <body>
@@ -49,7 +49,7 @@
     </div>
     <p id="status"></p>
     <div id="tables"></div>
-    <button id="reset" type="button">Reset</button>
+    <button id="reset" type="button">Delete All</button>
     <script>
       const tables = document.getElementById("tables");
       const resetBtn = document.getElementById("reset");
