@@ -76,7 +76,7 @@ test("saved HTML includes a body double-click handler with the exact captured UR
   assert.ok(files.has("index.html"));
 });
 
-test("saved index entries use Other for missing trip types and retain known trip types", async () => {
+test("saved index entries retain original URLs and trip types across saves", async () => {
   const files = new Map();
   const destination = {
     async getFileHandle(name, options) {
@@ -99,7 +99,7 @@ test("saved index entries use Other for missing trip types and retain known trip
   context.destination = destination;
 
   await vm.runInContext(
-    'updateIndex(destination, { name: "SearchFight-20261106185414.html", url: "https://example.test/search" })',
+    'updateIndex(destination, { name: "SearchFight-20261106185414.html", url: "https://example.test/search?query=one" })',
     context,
   );
   await vm.runInContext(
@@ -108,8 +108,18 @@ test("saved index entries use Other for missing trip types and retain known trip
   );
 
   assert.deepEqual(JSON.parse(files.get("index.json")), [
-    { name: "SearchFight-Return-20261106185415.html", tripType: "Return" },
-    { name: "SearchFight-20261106185414.html", tripType: "Other" },
+    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return" },
+    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one" },
+  ]);
+
+  await vm.runInContext(
+    'updateIndex(destination, { name: "SearchFight-20261106185416.html", url: "https://example.test/search?query=two" })',
+    context,
+  );
+  assert.deepEqual(JSON.parse(files.get("index.json")), [
+    { name: "SearchFight-20261106185416.html", tripType: "Other", url: "https://example.test/search?query=two" },
+    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return" },
+    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one" },
   ]);
 });
 
