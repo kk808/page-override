@@ -246,3 +246,200 @@ test("recaptureSavedPage re-fetches the original URL in the background and overw
   assert.deepEqual(fetchedUrls, [originalUrl, originalUrl]);
   assertDoubleClickHandler(files.get(existingName), originalUrl);
 });
+
+function memoryDirectory(files) {
+  return {
+    async getFileHandle(name, options) {
+      if (!files.has(name) && !options?.create) throw new Error(`Missing file: ${name}`);
+      return {
+        async getFile() { return { text: async () => files.get(name) }; },
+        async createWritable() {
+          let content;
+          return {
+            async write(value) { content = value; },
+            async close() { files.set(name, content); },
+            async abort() {},
+          };
+        },
+      };
+    },
+  };
+}
+
+test("saved index detection matches only the configured index page", () => {
+  const context = loadHelpers();
+  const base = "http://localhost:8080/Shopping/";
+  assert.equal(context.isSavedIndexPage(`${base}index.html?filter=x#list`, base), true);
+  assert.equal(context.isSavedIndexPage(`${base}index.html`, base.slice(0, -1)), true);
+  assert.equal(context.isSavedIndexPage(`${base}index.html.evil`, base), false);
+  assert.equal(context.isSavedIndexPage("http://localhost:8081/Shopping/index.html", base), false);
+  assert.equal(context.isSavedIndexPage(`${base}nested/index.html`, base), false);
+  assert.equal(context.isSavedIndexPage(undefined, base), false);
+});
+
+test("bulk refresh overwrites each named snapshot and backfills legacy original URLs", async () => {
+  const firstUrl = "https://example.test/one?q=1#section";
+  const legacyUrl = "https://example.test/two?TripType=Return";
+  const firstName = "SearchFight-First.html";
+  const legacyName = "SearchFight-Legacy.html";
+  const entries = [
+    { name: firstName, tripType: "Other", url: firstUrl },
+    { name: legacyName, tripType: "Return", extra: "preserved" },
+  ];
+  const files = new Map([
+    ["index.json", JSON.stringify(entries)],
+    [firstName, "<html><head></head><body>Old</body></html>"],
+    [legacyName, "<html><head></head><body>Legacy</body></html>"],
+  ]);
+  const fetched = [];
+  const context = loadHelpers({
+    chrome: { storage: { local: { get: async () => ({ captureOriginalResponse: false }) } } },
+    fetch: async (url) => {
+      fetched.push(url);
+      return { ok: true, text: async () => `<html><head></head><body>New ${url}</body></html>` };
+    },
+  });
+  files.set(legacyName, context.withOriginalUrlDoubleClick(files.get(legacyName), legacyUrl));
+  context.destination = memoryDirectory(files);
+  assert.equal(await vm.runInContext("refreshSavedPages(destination)", context), 2);
+  assert.deepEqual(fetched, [firstUrl, legacyUrl]);
+  assert.match(files.get(firstName), /New https:\/\/example\.test\/one/);
+  assert.match(files.get(legacyName), /New https:\/\/example\.test\/two/);
+  assertDoubleClickHandler(files.get(firstName), firstUrl);
+  assertDoubleClickHandler(files.get(legacyName), legacyUrl);
+  assert.deepEqual(JSON.parse(files.get("index.json")), [
+    entries[0],
+    { ...entries[1], url: legacyUrl },
+  ]);
+});
+
+test("bulk refresh continues after failures and preserves failed snapshots", async () => {
+  const entries = [
+    { name: "SearchFight-Bad.html", url: "https://example.test/bad" },
+    { name: "Good.html", url: "https://example.test/good" },
+    { name: "SearchFight-Old.html" },
+    { name: "../index.html", url: "https://example.test/unsafe" },
+  ];
+  const files = new Map([
+    ["index.json", JSON.stringify(entries)],
+    ["SearchFight-Bad.html", "old bad"],
+    ["Good.html", "old good"],
+    ["SearchFight-Old.html", "old without URL"],
+  ]);
+  const fetched = [];
+  const context = loadHelpers({
+    chrome: { storage: { local: { get: async () => ({ captureOriginalResponse: true }) } } },
+    fetch: async (url) => {
+      fetched.push(url);
+      if (url.endsWith("/bad")) return { ok: false, status: 500 };
+      return { ok: true, text: async () => "<html><head></head><body>Updated</body></html>" };
+    },
+  });
+  context.destination = memoryDirectory(files);
+  await assert.rejects(vm.runInContext("refreshSavedPages(destination)", context), (error) => {
+    assert.match(error.message, /Refreshed 1 of 4 pages/);
+    assert.match(error.message, /SearchFight-Bad\.html:.*HTTP 500/);
+    assert.match(error.message, /SearchFight-Old\.html: No original URL/);
+    assert.match(error.message, /Invalid snapshot filename/);
+    return true;
+  });
+  assert.deepEqual(fetched, ["https://example.test/bad", "https://example.test/good"]);
+  assert.equal(files.get("SearchFight-Bad.html"), "old bad");
+  assert.match(files.get("Good.html"), /Updated/);
+  assert.doesNotMatch(files.get("Good.html"), /<base /);
+  assert.deepEqual(JSON.parse(files.get("index.json")), entries);
+});
+
+test("bulk refresh rejects malformed index data", async () => {
+  const context = loadHelpers();
+  context.destination = memoryDirectory(new Map([["index.json", "{}"]]));
+  await assert.rejects(vm.runInContext("refreshSavedPages(destination)", context), /must contain an array/);
+});
+
+test("index action refreshes directly or hands off to the permission page", async () => {
+  for (const permission of ["granted", "prompt"]) {
+    let listener;
+    const calls = [];
+    const chrome = {
+      action: {
+        onClicked: { addListener: (fn) => { listener = fn; } },
+        setBadgeText: async (value) => calls.push(["badge", value.text]),
+        setBadgeBackgroundColor: async () => {},
+        setTitle: async () => {},
+      },
+      runtime: { getURL: (name) => `chrome-extension://test/${name}` },
+      tabs: {
+        reload: async (id) => calls.push(["reload", id]),
+        update: async (id, value) => calls.push(["update", id, value.url]),
+      },
+      storage: { session: { set: async (value) => calls.push(["pending", value.pendingPage]) } },
+    };
+    const context = loadHelpers({ chrome, importScripts: () => {} });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "background.js"), "utf8"), context);
+    context.readSavedOverrideDirectories = async () => ({
+      destination: { queryPermission: async () => permission },
+    });
+    context.getPageOverrideBaseUrl = async () => "http://localhost:8080/Shopping/";
+    context.refreshSavedPages = async () => { calls.push(["refresh"]); return 2; };
+    const url = "http://localhost:8080/Shopping/index.html?filter=x";
+    await listener({ id: 12, url });
+    if (permission === "granted") {
+      assert.ok(calls.some((call) => call[0] === "refresh"));
+      assert.ok(calls.some((call) => call[0] === "reload" && call[1] === 12));
+      assert.ok(!calls.some((call) => call[0] === "pending"));
+    } else {
+      const pending = calls.find((call) => call[0] === "pending")[1];
+      assert.equal(pending.refreshIndex, true);
+      assert.equal(pending.indexUrl, url);
+      assert.ok(calls.some((call) => call[0] === "update" && call[2].endsWith("/grant.html")));
+      assert.ok(!calls.some((call) => call[0] === "refresh"));
+    }
+  }
+});
+
+test("permission page completes a pending index refresh and returns to the index", async () => {
+  let click;
+  const button = { addEventListener: (event, fn) => { click = fn; }, disabled: false };
+  const message = { textContent: "" };
+  const calls = [];
+  const indexUrl = "http://localhost:8080/Shopping/index.html";
+  const context = vm.createContext({
+    document: { getElementById: (id) => id === "grant" ? button : message },
+    chrome: { storage: { session: {
+      get: async () => ({ pendingPage: { refreshIndex: true, indexUrl } }),
+      remove: async (key) => calls.push(["remove", key]),
+    } } },
+    readSavedOverrideDirectories: async () => ({
+      destination: { requestPermission: async () => "granted" },
+    }),
+    refreshSavedPages: async () => calls.push(["refresh"]),
+    location: { replace: (url) => calls.push(["replace", url]) },
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "grant.js"), "utf8"), context);
+  await click();
+  assert.deepEqual(calls, [["refresh"], ["remove", "pendingPage"], ["replace", indexUrl]]);
+});
+
+test("permission page reports a bulk refresh failure and allows retry", async () => {
+  let click;
+  const button = { addEventListener: (event, fn) => { click = fn; }, disabled: false };
+  const message = { textContent: "" };
+  const calls = [];
+  const context = vm.createContext({
+    document: { getElementById: (id) => id === "grant" ? button : message },
+    chrome: { storage: { session: {
+      get: async () => ({ pendingPage: { refreshIndex: true, indexUrl: "http://localhost/index.html" } }),
+      remove: async () => calls.push("remove"),
+    } } },
+    readSavedOverrideDirectories: async () => ({
+      destination: { requestPermission: async () => "granted" },
+    }),
+    refreshSavedPages: async () => { throw new Error("Refreshed 1 of 2 pages. Fetch failed."); },
+    location: { replace: () => calls.push("replace") },
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "grant.js"), "utf8"), context);
+  await click();
+  assert.match(message.textContent, /Refreshed 1 of 2 pages/);
+  assert.equal(button.disabled, false);
+  assert.deepEqual(calls, []);
+});

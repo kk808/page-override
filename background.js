@@ -22,6 +22,18 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
     const baseUrl = await getPageOverrideBaseUrl();
+    if (isSavedIndexPage(tab.url, baseUrl)) {
+      if (await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
+        await chrome.storage.session.set({ pendingPage: { refreshIndex: true, indexUrl: tab.url } });
+        await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
+        return;
+      }
+      await setBadge(tabId, "...", "Page Override: refreshing saved pages");
+      const count = await refreshSavedPages(saved.destination);
+      await chrome.tabs.reload(tabId);
+      await setBadge(tabId, "", `Page Override: refreshed ${count} saved pages`);
+      return;
+    }
     const existingName = savedPageFileName(tab.url, baseUrl);
     const recaptured = existingName
       ? await recaptureSavedPage(tabId, saved.destination, existingName)

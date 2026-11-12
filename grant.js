@@ -10,6 +10,13 @@ grantButton.addEventListener("click", async () => {
       throw new Error("Folder access was not granted.");
     }
     const { pendingPage } = await chrome.storage.session.get("pendingPage");
+    if (pendingPage?.refreshIndex) {
+      message.textContent = "Refreshing saved pages...";
+      await refreshSavedPages(saved.destination);
+      await chrome.storage.session.remove("pendingPage");
+      location.replace(pendingPage.indexUrl);
+      return;
+    }
     if (!pendingPage?.html) throw new Error("No captured page was found. Run Page Override again.");
     const name = await savePageHtml(saved.destination, pendingPage);
     await chrome.storage.session.remove("pendingPage");

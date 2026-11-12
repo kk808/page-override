@@ -12,6 +12,7 @@
 - **Tab title tagging:** Updates the saved HTML `<title>` tag to match the snapshot identifier so local override tabs are easy to distinguish.
 - **Open original URL:** Double-click anywhere in a newly saved page's body to open the captured URL in a new tab.
 - **Re-fetch on saved page:** Clicking the extension icon (or pressing `Alt+4`) while viewing a saved localhost page re-fetches its original URL in the background, overwrites the same `.html` file, and refreshes the tab.
+- **Refresh all saved pages:** On the saved pages index, click the extension icon (or press `Alt+4`) to re-fetch every indexed original URL and overwrite each corresponding snapshot.
 - **Seamless folder permission recovery:** Handles Chrome's session-scoped File System Access API permissions via a built-in re-grant screen (`grant.html`) without losing the captured page.
 
 ---
@@ -19,6 +20,8 @@
 ## Saved Pages Index
 
 Every save also updates `index.json` and `index.html` in the destination folder (from `index-template.html`). Each JSON entry includes the snapshot name, trip type, and original page URL so the page can be refetched later. Open `<Base URL>index.html` (e.g. `http://localhost:8080/Shopping/index.html`) to list, filter and open all saved pages. To delete a single page, click its `✕` icon twice (the first click highlights the row; `Esc` or clicking outside cancels). To clear everything, click **Delete All** at the bottom-right twice to remove all saved page files and empty `index.json`. The first delete or **Delete All** prompts for the destination folder once and remembers it.
+
+While viewing the index, click the extension icon or press `Alt+4` to refresh all snapshots from their original URLs. Older entries without a URL use the URL embedded in the snapshot when available, and it is added to `index.json`. If some pages cannot be refreshed, the others are still processed and the extension reports the failures; hover over its `!` badge for details, or read the message on the folder permission screen.
 
 ---
 

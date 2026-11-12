@@ -192,6 +192,17 @@ function savedPageFileName(tabUrl, baseUrl) {
   return decoded;
 }
 
+function isSavedIndexPage(tabUrl, baseUrl) {
+  try {
+    const base = new URL(baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
+    const page = new URL(tabUrl);
+    const index = new URL("index.html", base);
+    return page.origin === index.origin && page.pathname === index.pathname;
+  } catch {
+    return false;
+  }
+}
+
 async function fetchOriginalPage(url) {
   const { captureOriginalResponse: useOriginal } = await chrome.storage.local.get("captureOriginalResponse");
   const response = await fetch(url, { cache: "no-store", credentials: "include" });
@@ -224,6 +235,13 @@ async function recaptureSavedPage(tabId, destinationDirectory, name) {
 
 async function savePageHtml(destinationDirectory, { html, url, name: existingName }) {
   const name = existingName || overrideFileName(url);
+  await writePageHtml(destinationDirectory, { html, url, name });
+  try { await updateIndex(destinationDirectory, { name, url }); }
+  catch (error) { console.warn("Could not update index.html", error); }
+  return name;
+}
+
+async function writePageHtml(destinationDirectory, { html, url, name }) {
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
@@ -235,9 +253,69 @@ async function savePageHtml(destinationDirectory, { html, url, name: existingNam
     catch (abortError) { console.warn("Could not abort the incomplete page save", abortError); }
     throw error;
   }
-  try { await updateIndex(destinationDirectory, { name, url }); }
-  catch (error) { console.warn("Could not update index.html", error); }
-  return name;
+}
+
+async function refreshSavedPages(destinationDirectory) {
+  const indexHandle = await destinationDirectory.getFileHandle("index.json");
+  const indexFile = await indexHandle.getFile();
+  const entries = JSON.parse(await indexFile.text());
+  if (!Array.isArray(entries)) throw new Error("index.json must contain an array of saved pages.");
+
+  const failures = [];
+  const seen = new Set();
+  let updatedIndex = false;
+  let refreshed = 0;
+  for (const entry of entries) {
+    const name = entry?.name;
+    try {
+      if (typeof name !== "string" || !/^[^/\\]+\.html$/i.test(name) || name.toLowerCase() === "index.html") {
+        throw new Error("Invalid snapshot filename.");
+      }
+      if (seen.has(name)) throw new Error("Duplicate snapshot filename.");
+      seen.add(name);
+      let url = entry.url;
+      const needsUrl = !url;
+      if (!url) {
+        const file = await (await destinationDirectory.getFileHandle(name)).getFile();
+        url = extractOriginalUrl(await file.text());
+        if (!url) throw new Error("No original URL in index.json or snapshot.");
+      }
+      let parsedUrl;
+      try {
+        if (typeof url !== "string") throw new Error("Invalid URL type.");
+        parsedUrl = new URL(url);
+      }
+      catch { throw new Error("Invalid original URL."); }
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+        throw new Error("Original URL must use HTTP or HTTPS.");
+      }
+      if (needsUrl) {
+        entry.url = url;
+        updatedIndex = true;
+      }
+      const page = await fetchOriginalPage(url);
+      await writePageHtml(destinationDirectory, { ...page, name });
+      refreshed++;
+    } catch (error) {
+      failures.push(`${typeof name === "string" ? name : "(unnamed entry)"}: ${error.message || String(error)}`);
+    }
+  }
+
+  if (updatedIndex) {
+    const writer = await indexHandle.createWritable();
+    try {
+      await writer.write(JSON.stringify(entries, null, 2));
+      await writer.close();
+    } catch (error) {
+      try { await writer.abort(); }
+      catch (abortError) { console.warn("Could not abort the incomplete index save", abortError); }
+      throw error;
+    }
+  }
+  if (failures.length) {
+    throw new Error(`Refreshed ${refreshed} of ${entries.length} pages. ${failures.join(" | ")}`);
+  }
+  return refreshed;
 }
 async function readSavedOverrideDirectories() {
   const database = await new Promise((resolve, reject) => {
