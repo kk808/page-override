@@ -11,6 +11,7 @@
 - **Smart flight-search naming:** Automatically derives descriptive snapshot filenames from flight query parameters (`TripType`, `FromCode`, `ToCode`, `FromDate`, `ToDate`, or `Segments`) plus a timestamp.
 - **Tab title tagging:** Updates the saved HTML `<title>` tag to match the snapshot identifier so local override tabs are easy to distinguish.
 - **Open original URL:** Double-click anywhere in a newly saved page's body to open the captured URL in a new tab.
+- **Re-fetch on saved page:** Clicking the extension icon (or pressing `Alt+4`) while viewing a saved localhost page re-fetches its original URL in the background, overwrites the same `.html` file, and refreshes the tab.
 - **Seamless folder permission recovery:** Handles Chrome's session-scoped File System Access API permissions via a built-in re-grant screen (`grant.html`) without losing the captured page.
 
 ---
@@ -77,7 +78,7 @@ Double-click the saved page's body to open its original URL in a new tab. This a
 
 | File | Purpose |
 | --- | --- |
-| `manifest.json` | Manifest V3 configuration, permissions (`storage`, `activeTab`, `scripting`, `debugger`), and `Alt+4` shortcut. |
+| `manifest.json` | Manifest V3 configuration, permissions (`storage`, `activeTab`, `scripting`, `debugger`), host permissions (`http://*/*`, `https://*/*`), and `Alt+4` shortcut. |
 | `background.js` | Service worker handling toolbar/shortcut triggers, permission checks, tab redirection, and error badges. |
 | `page-override.js` | Shared helpers for DOM capture, filename generation, `<title>` rewriting, file saving, and IndexedDB lookup. |
 | `options.html` / `options.js` | Settings UI for choosing/clearing the local destination directory and configuring the `localhost` base URL. |

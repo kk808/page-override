@@ -140,12 +140,22 @@ function overrideFileName(pageUrl, date = new Date()) {
   return ["SearchFight", ...parts, timestamp].join("-") + ".html";
 }
 
+function withBaseHref(html, url) {
+  if (/<base[\s>]/i.test(html)) return html;
+  const escapedUrl = String(url).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const baseTag = `<base href="${escapedUrl}">`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (head) => head + baseTag);
+  return html;
+}
+
 function withTitle(html, title) {
   const titleTag = `<title>${title}</title>`;
   if (/<title[\s>]/i.test(html)) return html.replace(/<title[^>]*>[\s\S]*?<\/title>/i, () => titleTag);
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (head) => head + titleTag);
   return html;
 }
+
+const ORIGINAL_URL_HANDLER_RE = /<script>\r?\nwindow\.addEventListener\("dblclick", \(event\) => \{\r?\n  if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(("(?:\\.|[^"\\])*")(?:, "_blank", "noopener,noreferrer")?\);\r?\n\}, true\);\r?\n<\/script>/;
 
 function withOriginalUrlDoubleClick(html, url) {
   const safeUrl = JSON.stringify(url).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
@@ -154,12 +164,66 @@ window.addEventListener("dblclick", (event) => {
   if (document.body && document.body.contains(event.target)) window.open(${safeUrl}, "_blank", "noopener,noreferrer");
 }, true);
 </script>`;
+  if (ORIGINAL_URL_HANDLER_RE.test(html)) return html.replace(ORIGINAL_URL_HANDLER_RE, () => script);
   if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, (head) => script + head);
   return html + script;
 }
 
-async function savePageHtml(destinationDirectory, { html, url }) {
-  const name = overrideFileName(url);
+function extractOriginalUrl(html) {
+  if (typeof html !== "string") return null;
+  const handlerMatch = html.match(
+    /window\.addEventListener\(\s*"dblclick"[\s\S]*?if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(\s*("(?:\\.|[^"\\])*")/
+  );
+  if (handlerMatch) {
+    try { return JSON.parse(handlerMatch[1]); } catch { /* ignore malformed URL literal */ }
+  }
+  return null;
+}
+
+function savedPageFileName(tabUrl, baseUrl) {
+  if (!tabUrl || !baseUrl) return null;
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  if (!tabUrl.startsWith(normalizedBase)) return null;
+  const rest = tabUrl.slice(normalizedBase.length).split(/[?#]/, 1)[0];
+  if (!rest || rest.includes("/")) return null;
+  let decoded;
+  try { decoded = decodeURIComponent(rest); } catch { return null; }
+  if (!/^SearchFight-.*\.html$/.test(decoded)) return null;
+  return decoded;
+}
+
+async function fetchOriginalPage(url) {
+  const { captureOriginalResponse: useOriginal } = await chrome.storage.local.get("captureOriginalResponse");
+  const response = await fetch(url, { cache: "no-store", credentials: "include" });
+  if (!response.ok) throw new Error(`Could not fetch the original page (HTTP ${response.status}).`);
+  const rawHtml = await response.text();
+  const html = useOriginal ? rawHtml : withBaseHref(rawHtml, url);
+  return { html, url };
+}
+
+async function recaptureSavedPage(tabId, destinationDirectory, name) {
+  let existingHtml = "";
+  if (destinationDirectory?.getFileHandle) {
+    try {
+      const file = await (await destinationDirectory.getFileHandle(name)).getFile();
+      existingHtml = await file.text();
+    } catch { /* folder permission not granted yet or file missing */ }
+  }
+  let originalUrl = extractOriginalUrl(existingHtml);
+  if (!originalUrl && typeof tabId === "number" && chrome?.scripting?.executeScript) {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => (document.documentElement ? document.documentElement.outerHTML : ""),
+    });
+    originalUrl = extractOriginalUrl(result?.result || "");
+  }
+  if (!originalUrl) return null;
+  const { html, url } = await fetchOriginalPage(originalUrl);
+  return { html, url, name };
+}
+
+async function savePageHtml(destinationDirectory, { html, url, name: existingName }) {
+  const name = existingName || overrideFileName(url);
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {

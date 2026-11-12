@@ -21,16 +21,29 @@ chrome.action.onClicked.addListener(async (tab) => {
       await chrome.runtime.openOptionsPage();
       return;
     }
-    const page = await captureTabHtml(tabId);
+    const baseUrl = await getPageOverrideBaseUrl();
+    const existingName = savedPageFileName(tab.url, baseUrl);
+    const recaptured = existingName
+      ? await recaptureSavedPage(tabId, saved.destination, existingName)
+      : null;
+    const isSavedPage = Boolean(recaptured);
+    const page = recaptured || await captureTabHtml(tabId);
     if (await saved.destination.queryPermission({ mode: "readwrite" }) !== "granted") {
       // Chrome drops folder access when no extension page is open; re-granting needs a click.
       await chrome.storage.session.set({ pendingPage: page });
-      await chrome.tabs.create({ url: chrome.runtime.getURL("grant.html"), index: tab.index + 1, openerTabId: tabId });
+      if (isSavedPage) {
+        await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("grant.html") });
+      } else {
+        await chrome.tabs.create({ url: chrome.runtime.getURL("grant.html"), index: tab.index + 1, openerTabId: tabId });
+      }
       return;
     }
     const name = await savePageHtml(saved.destination, page);
-    const baseUrl = await getPageOverrideBaseUrl();
-    await chrome.tabs.create({ url: `${baseUrl}${encodeURIComponent(name)}`, index: tab.index + 1, openerTabId: tabId });
+    if (isSavedPage) {
+      await chrome.tabs.reload(tabId);
+    } else {
+      await chrome.tabs.create({ url: `${baseUrl}${encodeURIComponent(name)}`, index: tab.index + 1, openerTabId: tabId });
+    }
     await setBadge(tabId, "", "Page Override");
   } catch (error) {
     console.warn("Could not run Page Override", error);

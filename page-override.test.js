@@ -140,3 +140,99 @@ test("original response capture retains the URL fragment without changing the re
   assert.equal(result.url, "https://example.test/path#section");
   assert.equal(calls[1].params.url, "https://example.test/path");
 });
+
+test("savedPageFileName identifies saved snapshot URLs and excludes index files or other origins", () => {
+  const context = loadHelpers();
+  const baseUrl = "http://localhost:8080/Shopping/";
+  assert.equal(
+    context.savedPageFileName("http://localhost:8080/Shopping/SearchFight-Return-20261106185415.html?foo=1#bar", baseUrl),
+    "SearchFight-Return-20261106185415.html",
+  );
+  assert.equal(context.savedPageFileName("http://localhost:8080/Shopping/index.html", baseUrl), null);
+  assert.equal(context.savedPageFileName("http://localhost:8080/Shopping/Flights?TripType=Return", baseUrl), null);
+  assert.equal(context.savedPageFileName("https://example.test/Shopping/SearchFight-Return.html", baseUrl), null);
+});
+
+test("recaptureSavedPage returns null when a page has no embedded original URL so it can be saved normally", async () => {
+  const context = loadHelpers({
+    chrome: {
+      scripting: {
+        executeScript: async () => [{ result: "<html><head><base href=\"http://localhost:8080/Shopping/\"></head><body>Live</body></html>" }],
+      },
+    },
+  });
+  const result = await vm.runInContext(
+    'recaptureSavedPage(1, null, "SearchFight-Return-20261101120000.html")',
+    context,
+  );
+  assert.equal(result, null);
+});
+
+test("recaptureSavedPage re-fetches the original URL in the background and overwrites the same file", async () => {
+  const originalUrl = "https://example.test/flights?TripType=Return&FromCode=MEL&ToCode=SYD#results";
+  const existingName = "SearchFight-Return-MEL-SYD-20261101120000.html";
+  const files = new Map();
+  const destination = {
+    async getFileHandle(name, options) {
+      if (!options?.create) {
+        if (!files.has(name)) throw new Error("File not found");
+        return { async getFile() { return { text: async () => files.get(name) }; } };
+      }
+      return { async createWritable() {
+        return {
+          async write(content) { files.set(name, content); },
+          async close() {},
+          async abort() {},
+        };
+      } };
+    },
+  };
+
+  let captureOriginalResponse = false;
+  let fetchedHtml = "<!doctype html><html><head><title>Live</title></head><body>Refreshed v1</body></html>";
+  const fetchedUrls = [];
+  const context = loadHelpers({
+    chrome: {
+      runtime: { getURL: (name) => name },
+      storage: { local: { get: async () => ({ captureOriginalResponse }) } },
+    },
+    fetch: async (targetUrl) => {
+      if (targetUrl === "index-template.html") return { ok: true, text: async () => "<html>index</html>" };
+      fetchedUrls.push(targetUrl);
+      return { ok: true, status: 200, text: async () => fetchedHtml };
+    },
+  });
+  context.destination = destination;
+
+  // Initial save to establish the saved snapshot file
+  await vm.runInContext(
+    `savePageHtml(destination, { html: "<!doctype html><html><head><title>Initial</title></head><body>Old</body></html>", url: ${JSON.stringify(originalUrl)}, name: ${JSON.stringify(existingName)} })`,
+    context,
+  );
+
+  // Recapture with Capture Original Response = false (default: injects <base href>)
+  const recapturedRendered = await vm.runInContext(
+    `recaptureSavedPage(1, destination, ${JSON.stringify(existingName)})`,
+    context,
+  );
+  assert.equal(recapturedRendered.name, existingName);
+  assert.equal(recapturedRendered.url, originalUrl);
+  const savedName1 = await vm.runInContext("savePageHtml(destination, recapturedRendered)", Object.assign(context, { recapturedRendered }));
+  assert.equal(savedName1, existingName);
+  assert.match(files.get(existingName), /Refreshed v1/);
+  assert.match(files.get(existingName), /<base href="https:\/\/example\.test\/flights\?TripType=Return&amp;FromCode=MEL&amp;ToCode=SYD#results">/);
+
+  // Recapture with Capture Original Response = true (raw server response, no <base href>)
+  captureOriginalResponse = true;
+  fetchedHtml = "<!doctype html><html><head><title>Live</title></head><body>Refreshed v2</body></html>";
+  const recapturedOriginal = await vm.runInContext(
+    `recaptureSavedPage(1, destination, ${JSON.stringify(existingName)})`,
+    context,
+  );
+  const savedName2 = await vm.runInContext("savePageHtml(destination, recapturedOriginal)", Object.assign(context, { recapturedOriginal }));
+  assert.equal(savedName2, existingName);
+  assert.match(files.get(existingName), /Refreshed v2/);
+  assert.doesNotMatch(files.get(existingName), /<base /);
+  assert.deepEqual(fetchedUrls, [originalUrl, originalUrl]);
+  assertDoubleClickHandler(files.get(existingName), originalUrl);
+});
