@@ -12,39 +12,47 @@ function loadHelpers(extra = {}) {
   return context;
 }
 
-function assertDoubleClickHandler(html, expectedUrl) {
+function assertBrandLogoClickHandler(html, expectedUrl) {
   const match = html.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(match, "snapshot contains a complete handler script");
   let handler;
-  let capture;
-  const bodyTarget = {};
-  const body = { contains: (target) => target === bodyTarget || target === body };
+  let selector;
+  let readyListener;
   const opened = [];
   vm.runInNewContext(match[1], {
     window: {
-      addEventListener(type, listener, options) {
-        assert.equal(type, "dblclick");
-        handler = listener;
-        capture = options;
-      },
       open(url, target, features) {
         opened.push({ url, target, features });
       },
     },
-    document: { body },
+    document: {
+      addEventListener(type, listener) {
+        assert.equal(type, "DOMContentLoaded");
+        readyListener = listener;
+      },
+      querySelector(value) {
+        selector = value;
+        return {
+          addEventListener(type, listener) {
+            assert.equal(type, "click");
+            handler = listener;
+          },
+        };
+      },
+    },
   });
-  assert.equal(capture, true);
-  handler({ target: {} });
-  assert.deepEqual(opened, []);
-  handler({ target: bodyTarget });
-  handler({ target: body });
+  assert.equal(typeof readyListener, "function");
+  readyListener();
+  assert.equal(selector, "a.brand-logo");
+  let prevented = false;
+  handler({ preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
   assert.deepEqual(opened, [
-    { url: expectedUrl, target: "_blank", features: "noopener,noreferrer" },
     { url: expectedUrl, target: "_blank", features: "noopener,noreferrer" },
   ]);
 }
 
-test("saved HTML includes a body double-click handler with the exact captured URL", async () => {
+test("saved HTML opens the captured URL when the brand logo link is clicked", async () => {
   const url = "https://example.test/search?q=%22&value=</script><script>bad()</script>#results";
   const files = new Map();
   const destination = {
@@ -64,14 +72,14 @@ test("saved HTML includes a body double-click handler with the exact captured UR
     fetch: async () => ({ text: async () => "<html>index</html>" }),
   });
   context.destination = destination;
-  context.page = { html: '<!doctype html><html><head><meta charset="utf-8"><title>Old</title></head><body>Saved</body></html>', url };
+  context.page = { html: '<!doctype html><html><head><meta charset="utf-8"><title>Old</title></head><body><a class="brand-logo" href="/">Logo</a>Saved</body></html>', url };
   const name = await vm.runInContext("savePageHtml(destination, page)", context);
   const saved = files.get(name);
   assert.match(saved, /^<!doctype html>/);
   assert.match(saved, /<title>(?!Old)/);
   assert.ok(saved.indexOf('<meta charset="utf-8">') < saved.indexOf("<script>"));
   assert.ok(!saved.includes("</script><script>bad()"));
-  assertDoubleClickHandler(saved, url);
+  assertBrandLogoClickHandler(saved, url);
   assert.ok(files.has("index.json"));
   assert.ok(files.has("index.html"));
 });
@@ -123,12 +131,26 @@ test("saved index entries retain original URLs and trip types across saves", asy
   ]);
 });
 
-test("documents without a head still receive the handler", () => {
+test("documents without a head still receive the brand logo handler", () => {
   const context = loadHelpers();
-  context.html = "<!doctype html><body>Saved</body>";
+  context.html = '<!doctype html><body><a class="brand-logo" href="/">Logo</a>Saved</body>';
   context.url = "https://example.test/#section";
-  const result = vm.runInContext("withOriginalUrlDoubleClick(html, url)", context);
-  assertDoubleClickHandler(result, context.url);
+  const result = vm.runInContext("withOriginalUrlBrandLogoClick(html, url)", context);
+  assertBrandLogoClickHandler(result, context.url);
+});
+
+test("legacy double-click handlers still yield the captured URL and are replaced", () => {
+  const context = loadHelpers();
+  const url = "https://example.test/legacy";
+  context.html = `<html><head><script>
+window.addEventListener("dblclick", (event) => {
+  if (document.body && document.body.contains(event.target)) window.open(${JSON.stringify(url)}, "_blank", "noopener,noreferrer");
+}, true);
+</script></head><body><a class="brand-logo" href="/">Logo</a></body></html>`;
+  assert.equal(context.extractOriginalUrl(context.html), url);
+  const updated = context.withOriginalUrlBrandLogoClick(context.html, url);
+  assert.equal((updated.match(/<script>/g) || []).length, 1);
+  assertBrandLogoClickHandler(updated, url);
 });
 
 test("original response capture retains the URL fragment without changing the resource URL", async () => {
@@ -244,7 +266,7 @@ test("recaptureSavedPage re-fetches the original URL in the background and overw
   assert.match(files.get(existingName), /Refreshed v2/);
   assert.doesNotMatch(files.get(existingName), /<base /);
   assert.deepEqual(fetchedUrls, [originalUrl, originalUrl]);
-  assertDoubleClickHandler(files.get(existingName), originalUrl);
+  assertBrandLogoClickHandler(files.get(existingName), originalUrl);
 });
 
 function memoryDirectory(files) {
@@ -299,14 +321,14 @@ test("bulk refresh overwrites each named snapshot and backfills legacy original 
       return { ok: true, text: async () => `<html><head></head><body>New ${url}</body></html>` };
     },
   });
-  files.set(legacyName, context.withOriginalUrlDoubleClick(files.get(legacyName), legacyUrl));
+  files.set(legacyName, context.withOriginalUrlBrandLogoClick(files.get(legacyName), legacyUrl));
   context.destination = memoryDirectory(files);
   assert.equal(await vm.runInContext("refreshSavedPages(destination)", context), 2);
   assert.deepEqual(fetched, [firstUrl, legacyUrl]);
   assert.match(files.get(firstName), /New https:\/\/example\.test\/one/);
   assert.match(files.get(legacyName), /New https:\/\/example\.test\/two/);
-  assertDoubleClickHandler(files.get(firstName), firstUrl);
-  assertDoubleClickHandler(files.get(legacyName), legacyUrl);
+  assertBrandLogoClickHandler(files.get(firstName), firstUrl);
+  assertBrandLogoClickHandler(files.get(legacyName), legacyUrl);
   assert.deepEqual(JSON.parse(files.get("index.json")), [
     entries[0],
     { ...entries[1], url: legacyUrl },

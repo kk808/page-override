@@ -155,14 +155,20 @@ function withTitle(html, title) {
   return html;
 }
 
-const ORIGINAL_URL_HANDLER_RE = /<script>\r?\nwindow\.addEventListener\("dblclick", \(event\) => \{\r?\n  if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(("(?:\\.|[^"\\])*")(?:, "_blank", "noopener,noreferrer")?\);\r?\n\}, true\);\r?\n<\/script>/;
+const ORIGINAL_URL_HANDLER_RE = /<script>\r?\n(?:window\.addEventListener\("dblclick", \(event\) => \{\r?\n  if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(("(?:\\.|[^"\\])*")(?:, "_blank", "noopener,noreferrer")?\);\r?\n\}, true\);|document\.addEventListener\("DOMContentLoaded", \(\) => \{\r?\n  const brandLogo = document\.querySelector\("a\.brand-logo"\);\r?\n  if \(brandLogo\) \{\r?\n    brandLogo\.addEventListener\("click", \(event\) => \{\r?\n      event\.preventDefault\(\);\r?\n      window\.open\(("(?:\\.|[^"\\])*"), "_blank", "noopener,noreferrer"\);\r?\n    \}\);\r?\n  \}\r?\n\}\);)\r?\n<\/script>/;
 
-function withOriginalUrlDoubleClick(html, url) {
+function withOriginalUrlBrandLogoClick(html, url) {
   const safeUrl = JSON.stringify(url).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   const script = `<script>
-window.addEventListener("dblclick", (event) => {
-  if (document.body && document.body.contains(event.target)) window.open(${safeUrl}, "_blank", "noopener,noreferrer");
-}, true);
+document.addEventListener("DOMContentLoaded", () => {
+  const brandLogo = document.querySelector("a.brand-logo");
+  if (brandLogo) {
+    brandLogo.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.open(${safeUrl}, "_blank", "noopener,noreferrer");
+    });
+  }
+});
 </script>`;
   if (ORIGINAL_URL_HANDLER_RE.test(html)) return html.replace(ORIGINAL_URL_HANDLER_RE, () => script);
   if (/<\/head\s*>/i.test(html)) return html.replace(/<\/head\s*>/i, (head) => script + head);
@@ -171,9 +177,13 @@ window.addEventListener("dblclick", (event) => {
 
 function extractOriginalUrl(html) {
   if (typeof html !== "string") return null;
-  const handlerMatch = html.match(
+  const brandLogoHandlerMatch = html.match(
+    /document\.querySelector\("a\.brand-logo"\)[\s\S]*?window\.open\(\s*("(?:\\.|[^"\\])*")/
+  );
+  const legacyHandlerMatch = html.match(
     /window\.addEventListener\(\s*"dblclick"[\s\S]*?if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(\s*("(?:\\.|[^"\\])*")/
   );
+  const handlerMatch = brandLogoHandlerMatch || legacyHandlerMatch;
   if (handlerMatch) {
     try { return JSON.parse(handlerMatch[1]); } catch { /* ignore malformed URL literal */ }
   }
@@ -243,7 +253,7 @@ async function savePageHtml(destinationDirectory, { html, url, name: existingNam
 
 function finalizePageHtml({ html, url, name }) {
   const titledHtml = withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, ""));
-  return withOriginalUrlDoubleClick(titledHtml, url);
+  return withOriginalUrlBrandLogoClick(titledHtml, url);
 }
 
 // Used by the saved index page ("Update All"): fetches the latest HTML so the page can write it under the same name.
