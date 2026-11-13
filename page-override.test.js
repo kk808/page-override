@@ -299,7 +299,7 @@ test("saved index detection matches only the configured index page", () => {
   assert.equal(context.isSavedIndexPage(undefined, base), false);
 });
 
-test("bulk refresh overwrites each named snapshot and backfills legacy original URLs", async () => {
+test("bulk refresh overwrites snapshots without modifying index files", async () => {
   const firstUrl = "https://example.test/one?q=1#section";
   const legacyUrl = "https://example.test/two?TripType=Return";
   const firstName = "SearchFight-First.html";
@@ -308,8 +308,11 @@ test("bulk refresh overwrites each named snapshot and backfills legacy original 
     { name: firstName, tripType: "Other", url: firstUrl },
     { name: legacyName, tripType: "Return", extra: "preserved" },
   ];
+  const indexJson = JSON.stringify(entries, null, 2);
+  const indexHtml = "<html><body>Keep this file unchanged.</body></html>";
   const files = new Map([
-    ["index.json", JSON.stringify(entries)],
+    ["index.json", indexJson],
+    ["index.html", indexHtml],
     [firstName, "<html><head></head><body>Old</body></html>"],
     [legacyName, "<html><head></head><body>Legacy</body></html>"],
   ]);
@@ -329,10 +332,8 @@ test("bulk refresh overwrites each named snapshot and backfills legacy original 
   assert.match(files.get(legacyName), /New https:\/\/example\.test\/two/);
   assertBrandLogoClickHandler(files.get(firstName), firstUrl);
   assertBrandLogoClickHandler(files.get(legacyName), legacyUrl);
-  assert.deepEqual(JSON.parse(files.get("index.json")), [
-    entries[0],
-    { ...entries[1], url: legacyUrl },
-  ]);
+  assert.equal(files.get("index.json"), indexJson);
+  assert.equal(files.get("index.html"), indexHtml);
 });
 
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {
@@ -344,6 +345,7 @@ test("bulk refresh continues after failures and preserves failed snapshots", asy
   ];
   const files = new Map([
     ["index.json", JSON.stringify(entries)],
+    ["index.html", "<html><body>Keep this file unchanged.</body></html>"],
     ["SearchFight-Bad.html", "old bad"],
     ["Good.html", "old good"],
     ["SearchFight-Old.html", "old without URL"],
@@ -370,6 +372,7 @@ test("bulk refresh continues after failures and preserves failed snapshots", asy
   assert.match(files.get("Good.html"), /Updated/);
   assert.doesNotMatch(files.get("Good.html"), /<base /);
   assert.deepEqual(JSON.parse(files.get("index.json")), entries);
+  assert.equal(files.get("index.html"), "<html><body>Keep this file unchanged.</body></html>");
 });
 
 test("bulk refresh rejects malformed index data", async () => {

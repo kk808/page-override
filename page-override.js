@@ -293,7 +293,6 @@ async function refreshSavedPages(destinationDirectory) {
 
   const failures = [];
   const seen = new Set();
-  let updatedIndex = false;
   let refreshed = 0;
   for (const entry of entries) {
     const name = entry?.name;
@@ -304,7 +303,6 @@ async function refreshSavedPages(destinationDirectory) {
       if (seen.has(name)) throw new Error("Duplicate snapshot filename.");
       seen.add(name);
       let url = entry.url;
-      const needsUrl = !url;
       if (!url) {
         const file = await (await destinationDirectory.getFileHandle(name)).getFile();
         url = extractOriginalUrl(await file.text());
@@ -319,10 +317,6 @@ async function refreshSavedPages(destinationDirectory) {
       if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
         throw new Error("Original URL must use HTTP or HTTPS.");
       }
-      if (needsUrl) {
-        entry.url = url;
-        updatedIndex = true;
-      }
       const page = await fetchOriginalPage(url);
       await writePageHtml(destinationDirectory, { ...page, name });
       refreshed++;
@@ -331,17 +325,6 @@ async function refreshSavedPages(destinationDirectory) {
     }
   }
 
-  if (updatedIndex) {
-    const writer = await indexHandle.createWritable();
-    try {
-      await writer.write(JSON.stringify(entries, null, 2));
-      await writer.close();
-    } catch (error) {
-      try { await writer.abort(); }
-      catch (abortError) { console.warn("Could not abort the incomplete index save", abortError); }
-      throw error;
-    }
-  }
   if (failures.length) {
     throw new Error(`Refreshed ${refreshed} of ${entries.length} pages. ${failures.join(" | ")}`);
   }
