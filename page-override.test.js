@@ -358,6 +358,15 @@ test("saved index tables can be reordered and retain their group positions", () 
   assert.match(indexTemplate, /restoreGroupOrder\(\);[\s\S]*load\(\);/);
 });
 
+test("saved index provides a rename action and safely updates the filename", () => {
+  assert.match(indexTemplate, /actionCol\.style\.width = "56px"/);
+  assert.match(indexTemplate, /rename\.setAttribute\("aria-label", "Rename " \+ e\.name\)/);
+  assert.match(indexTemplate, /async function renamePage\(entry\)/);
+  assert.match(indexTemplate, /item\.name\.toLowerCase\(\) === newName\.toLowerCase\(\)/);
+  assert.match(indexTemplate, /entries = entries\.map\(\(item\) => item\.name === entry\.name \? \{ \.\.\.item, name: newName \} : item\)/);
+  assert.match(indexTemplate, /await dir\.removeEntry\(entry\.name\)/);
+});
+
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {
   const entries = [
     { name: "SearchFight-Bad.html", url: "https://example.test/bad" },

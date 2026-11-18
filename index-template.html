@@ -36,6 +36,7 @@
       tbody tr:last-child td { border-bottom: none; }
       tbody tr:hover td { background: #1b2130; }
       td:last-child { text-align: right; padding-left: 0; padding-right: 8px; }
+      .row-actions { display: flex; justify-content: flex-end; gap: 2px; }
       td:first-child { padding-right: 4px; }
       a { color: #7aa7ff; text-decoration: none; }
       a:hover { color: #a9c4ff; text-decoration: underline; }
@@ -222,9 +223,9 @@
           const body = document.createElement("tbody");
           const cols = document.createElement("colgroup");
           const pageCol = document.createElement("col");
-          const delCol = document.createElement("col");
-          delCol.style.width = "32px";
-          cols.append(pageCol, delCol);
+          const actionCol = document.createElement("col");
+          actionCol.style.width = "56px";
+          cols.append(pageCol, actionCol);
           table.append(cols, head, body);
           for (const e of items) {
             const tr = document.createElement("tr");
@@ -237,9 +238,19 @@
             a.title = label;
             const linkCell = document.createElement("td");
             linkCell.append(a);
+            const rename = document.createElement("button");
+            rename.textContent = "✎";
+            rename.title = "Rename";
+            rename.draggable = false;
+            rename.setAttribute("aria-label", "Rename " + e.name);
+            rename.onclick = (event) => {
+              event.stopPropagation();
+              renamePage(e);
+            };
             const del = document.createElement("button");
             del.textContent = "✕";
             del.title = "Delete";
+            del.draggable = false;
             del.setAttribute("aria-label", "Delete " + e.name);
             del.onclick = (event) => {
               event.stopPropagation();
@@ -249,9 +260,12 @@
               armedRow = tr;
               tr.classList.add("armed");
             };
-            const delCell = document.createElement("td");
-            delCell.append(del);
-            tr.append(linkCell, delCell);
+            const actionCell = document.createElement("td");
+            const actions = document.createElement("div");
+            actions.className = "row-actions";
+            actions.append(rename, del);
+            actionCell.append(actions);
+            tr.append(linkCell, actionCell);
             body.append(tr);
           }
           tables.append(table);
@@ -306,6 +320,70 @@
           statusEl.textContent = "";
           render();
         } catch (err) { if (err.name !== "AbortError") statusEl.textContent = "Delete failed: " + err.message; }
+      }
+
+      async function renamePage(entry) {
+        const requested = window.prompt("New file name", entry.name);
+        if (requested === null) return;
+        let newName = requested.trim();
+        if (newName && !/\.html$/i.test(newName)) newName += ".html";
+        if (!newName || !/^[^/\\]+\.html$/i.test(newName) || newName.toLowerCase() === "index.html") {
+          statusEl.textContent = "Rename failed: Use a valid .html file name.";
+          return;
+        }
+        if (newName === entry.name) return;
+        if (entries.some((item) => item.name.toLowerCase() === newName.toLowerCase())) {
+          statusEl.textContent = "Rename failed: A saved page already uses that name.";
+          return;
+        }
+
+        const originalEntries = entries;
+        let copied = false;
+        let indexUpdated = false;
+        let indexRolledBack = false;
+        try {
+          if (!(await ensureWritableDir())) return;
+          try {
+            await dir.getFileHandle(newName);
+            throw new Error("A file with that name already exists.");
+          } catch (err) {
+            if (err.name !== "NotFoundError" && err.message !== "A file with that name already exists.") throw err;
+            if (err.message === "A file with that name already exists.") throw err;
+          }
+          const source = await (await (await dir.getFileHandle(entry.name)).getFile()).text();
+          const writer = await (await dir.getFileHandle(newName, { create: true })).createWritable();
+          try { await writer.write(source); await writer.close(); copied = true; }
+          catch (err) { await writer.abort().catch(() => {}); throw err; }
+
+          entries = entries.map((item) => item.name === entry.name ? { ...item, name: newName } : item);
+          const indexWriter = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+          try {
+            await indexWriter.write(JSON.stringify(entries, null, 2));
+            await indexWriter.close();
+            indexUpdated = true;
+          } catch (err) {
+            await indexWriter.abort().catch(() => {});
+            throw err;
+          }
+          await dir.removeEntry(entry.name).catch((err) => { if (err.name !== "NotFoundError") throw err; });
+          statusEl.textContent = "";
+          render();
+        } catch (err) {
+          entries = originalEntries;
+          if (indexUpdated) {
+            try {
+              const rollback = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+              await rollback.write(JSON.stringify(originalEntries, null, 2));
+              await rollback.close();
+              indexRolledBack = true;
+            } catch { /* Keep the original file and expose the rename error below. */ }
+          }
+          if (copied && (!indexUpdated || indexRolledBack)) {
+            await dir.removeEntry(newName).catch(() => {});
+          }
+          render();
+          if (err.name !== "AbortError") statusEl.textContent = "Rename failed: " + err.message;
+        }
       }
 
       async function resetAll() {
