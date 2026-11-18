@@ -255,12 +255,24 @@
             if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
             a.textContent = label;
             a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
-            a.onclick = (event) => {
+            a.onclick = async (event) => {
               if (!event.shiftKey || event.button !== 0) return;
               event.preventDefault();
               event.stopPropagation();
-              const savedEntry = entries.find((item) => item.name === a.dataset.snapshotName);
-              const originalUrl = savedEntry?.url;
+              let originalUrl;
+              if (event.ctrlKey || event.metaKey) {
+                originalUrl = entries.find((item) => item.name === a.dataset.snapshotName)?.url;
+              } else {
+                try {
+                  const response = await fetch("index.json", { cache: "no-store" });
+                  if (!response.ok) throw new Error("Could not read index.json (" + response.status + ").");
+                  const latestEntries = await response.json();
+                  originalUrl = latestEntries.find((item) => item.name === a.dataset.snapshotName)?.url;
+                } catch (err) {
+                  statusEl.textContent = "Could not read the original URL from index.json: " + err.message;
+                  return;
+                }
+              }
               if (!originalUrl) {
                 statusEl.textContent = "No original URL is saved in index.json for " + a.dataset.snapshotName + ".";
                 return;
@@ -271,7 +283,7 @@
                   window.focus();
                 }
               } else {
-                window.location.assign(originalUrl);
+                window.location.href = originalUrl;
               }
             };
             const linkCell = document.createElement("td");
