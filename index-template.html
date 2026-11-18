@@ -183,6 +183,10 @@
           table.dataset.group = tripType;
           table.title = "Drag to rearrange";
           table.ondragstart = (event) => {
+            if (event.target.closest("a, button")) {
+              event.preventDefault();
+              return;
+            }
             draggedGroup = tripType;
             table.classList.add("dragging");
             event.dataTransfer.effectAllowed = "move";
@@ -255,6 +259,9 @@
             if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
             a.textContent = label;
             a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
+            a.onmousedown = (event) => {
+              if (event.shiftKey) event.preventDefault();
+            };
             a.onclick = (event) => {
               if (!event.shiftKey) return;
               event.preventDefault();
@@ -270,7 +277,7 @@
                   window.focus();
                 }
               } else {
-                window.open(originalUrl, "_self");
+                window.location.href = originalUrl;
               }
             };
             const linkCell = document.createElement("td");

@@ -369,10 +369,12 @@ test("saved index provides a rename action and safely updates the filename", () 
 
 test("saved index opens the original URL with shift-click shortcuts", () => {
   assert.match(indexTemplate, /a\.draggable = false/);
+  assert.match(indexTemplate, /event\.target\.closest\("a, button"\)/);
+  assert.match(indexTemplate, /a\.onmousedown = \(event\) => \{[\s\S]*if \(event\.shiftKey\) event\.preventDefault\(\)/);
   assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey/);
   assert.match(indexTemplate, /const originalUrl = e\.url/);
   assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(originalUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(indexTemplate, /window\.open\(originalUrl, "_self"\)/);
+  assert.match(indexTemplate, /window\.location\.href = originalUrl/);
   assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: [^;]+; \}/);
   assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
   assert.match(indexTemplate, /const active = Boolean\(event\.shiftKey\)/);
