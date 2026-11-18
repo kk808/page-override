@@ -277,22 +277,22 @@
       }
 
       async function updateAll() {
-        if (updating || !entries.length) return;
+        const updateList = entries.filter((entry) => entry.tripType !== "Other");
+        if (updating || !updateList.length) return;
         updating = true;
         updateBtn.disabled = true;
         resetBtn.disabled = true;
-        const list = entries.slice();
         const failures = [];
         try {
           if (!(await ensureWritableDir())) return;
           progressEl.classList.remove("done", "fading");
           progressEl.classList.add("active");
-          progressBar.max = list.length;
+          progressBar.max = updateList.length;
           progressBar.value = 0;
           statusEl.textContent = "";
-          for (let i = 0; i < list.length; i++) {
-            const entry = list[i];
-            progressText.textContent = "Updating " + (i + 1) + " of " + list.length + "…";
+          for (let i = 0; i < updateList.length; i++) {
+            const entry = updateList[i];
+            progressText.textContent = "Updating " + (i + 1) + " of " + updateList.length + "…";
             try {
               let snapshot;
               if (!entry.url) snapshot = await (await (await dir.getFileHandle(entry.name)).getFile()).text();
@@ -303,12 +303,8 @@
             } catch (err) { failures.push(entry.name + ": " + err.message); }
             progressBar.value = i + 1;
           }
-          progressText.textContent = "Updated " + (list.length - failures.length) + " of " + list.length;
+          progressText.textContent = "Updated " + (updateList.length - failures.length) + " of " + updateList.length;
           progressEl.classList.add("done");
-          setTimeout(() => {
-            progressEl.classList.add("fading");
-            setTimeout(() => progressEl.classList.remove("active", "done", "fading"), 800);
-          }, 2500);
           if (failures.length) statusEl.textContent = "Some pages failed: " + failures.join(" | ");
         } catch (err) {
           if (err.name !== "AbortError") statusEl.textContent = "Update failed: " + err.message;

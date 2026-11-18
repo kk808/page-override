@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const path = require("node:path");
 
 const source = fs.readFileSync(path.join(__dirname, "page-override.js"), "utf8");
+const indexTemplate = fs.readFileSync(path.join(__dirname, "index-template.html"), "utf8");
 
 function loadHelpers(extra = {}) {
   const context = vm.createContext({ URL, URLSearchParams, console, ...extra });
@@ -299,7 +300,7 @@ test("saved index detection matches only the configured index page", () => {
   assert.equal(context.isSavedIndexPage(undefined, base), false);
 });
 
-test("bulk refresh overwrites snapshots without modifying index files", async () => {
+test("bulk refresh overwrites snapshots except Other trip types without modifying index files", async () => {
   const firstUrl = "https://example.test/one?q=1#section";
   const legacyUrl = "https://example.test/two?TripType=Return";
   const firstName = "SearchFight-First.html";
@@ -326,14 +327,21 @@ test("bulk refresh overwrites snapshots without modifying index files", async ()
   });
   files.set(legacyName, context.withOriginalUrlBrandLogoClick(files.get(legacyName), legacyUrl));
   context.destination = memoryDirectory(files);
-  assert.equal(await vm.runInContext("refreshSavedPages(destination)", context), 2);
-  assert.deepEqual(fetched, [firstUrl, legacyUrl]);
-  assert.match(files.get(firstName), /New https:\/\/example\.test\/one/);
+  assert.equal(await vm.runInContext("refreshSavedPages(destination)", context), 1);
+  assert.deepEqual(fetched, [legacyUrl]);
+  assert.equal(files.get(firstName), "<html><head></head><body>Old</body></html>");
   assert.match(files.get(legacyName), /New https:\/\/example\.test\/two/);
-  assertBrandLogoClickHandler(files.get(firstName), firstUrl);
   assertBrandLogoClickHandler(files.get(legacyName), legacyUrl);
   assert.equal(files.get("index.json"), indexJson);
   assert.equal(files.get("index.html"), indexHtml);
+});
+
+test("index progress counts only entries eligible for update", () => {
+  assert.match(indexTemplate, /const updateList = entries\.filter\(\(entry\) => entry\.tripType !== "Other"\)/);
+  assert.match(indexTemplate, /progressBar\.max = updateList\.length/);
+  assert.match(indexTemplate, /"Updating " \+ \(i \+ 1\) \+ " of " \+ updateList\.length/);
+  assert.match(indexTemplate, /"Updated " \+ \(updateList\.length - failures\.length\) \+ " of " \+ updateList\.length/);
+  assert.doesNotMatch(indexTemplate, /progressEl\.classList\.remove\("active", "done", "fading"\)/);
 });
 
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {

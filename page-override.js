@@ -291,10 +291,11 @@ async function refreshSavedPages(destinationDirectory) {
   const entries = JSON.parse(await indexFile.text());
   if (!Array.isArray(entries)) throw new Error("index.json must contain an array of saved pages.");
 
+  const updatableEntries = entries.filter((entry) => entry?.tripType !== "Other");
   const failures = [];
   const seen = new Set();
   let refreshed = 0;
-  for (const entry of entries) {
+  for (const entry of updatableEntries) {
     const name = entry?.name;
     try {
       if (typeof name !== "string" || !/^[^/\\]+\.html$/i.test(name) || name.toLowerCase() === "index.html") {
@@ -326,7 +327,7 @@ async function refreshSavedPages(destinationDirectory) {
   }
 
   if (failures.length) {
-    throw new Error(`Refreshed ${refreshed} of ${entries.length} pages. ${failures.join(" | ")}`);
+    throw new Error(`Refreshed ${refreshed} of ${updatableEntries.length} pages. ${failures.join(" | ")}`);
   }
   return refreshed;
 }
