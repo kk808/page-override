@@ -14,7 +14,7 @@ async function setBadge(tabId, text, title) {
 chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
   if (message?.type !== "fetchUpdatedPage") return false;
   fetchUpdatedPageHtml(message)
-    .then((html) => sendResponse({ html }))
+    .then((html) => sendResponse({ html, favicon: PAGE_OVERRIDE_FAVICON_BASE64 }))
     .catch((error) => sendResponse({ error: error.message || String(error) }));
   return true;
 });

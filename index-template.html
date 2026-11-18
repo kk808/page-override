@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>SearchFlights - Test Pages</title>
+    <title>Local Test Pages</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png?v=2">
     <style>
       :root { color-scheme: dark; }
       body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 96px; background: #0f1218; color: #e6e9ef; }
@@ -271,9 +272,17 @@
           chrome.runtime.sendMessage(EXTENSION_ID, { type: "fetchUpdatedPage", name: entry.name, url: entry.url, snapshot }, (reply) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
             else if (!reply || reply.error) reject(new Error(reply?.error || "No response from extension."));
-            else resolve(reply.html);
+            else resolve({ html: reply.html, favicon: reply.favicon });
           });
         });
+      }
+
+      async function writeFavicon(favicon) {
+        if (!favicon) return;
+        const bytes = Uint8Array.from(atob(favicon), (character) => character.charCodeAt(0));
+        const w = await (await dir.getFileHandle("icon-32.png", { create: true })).createWritable();
+        try { await w.write(bytes); await w.close(); }
+        catch (err) { await w.abort().catch(() => {}); throw err; }
       }
 
       async function updateAll() {
@@ -296,9 +305,10 @@
             try {
               let snapshot;
               if (!entry.url) snapshot = await (await (await dir.getFileHandle(entry.name)).getFile()).text();
-              const html = await fetchUpdated(entry, snapshot);
+              const updated = await fetchUpdated(entry, snapshot);
+              await writeFavicon(updated.favicon);
               const w = await (await dir.getFileHandle(entry.name, { create: true })).createWritable();
-              try { await w.write(html); await w.close(); }
+              try { await w.write(updated.html); await w.close(); }
               catch (err) { await w.abort().catch(() => {}); throw err; }
             } catch (err) { failures.push(entry.name + ": " + err.message); }
             progressBar.value = i + 1;

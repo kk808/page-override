@@ -8,7 +8,24 @@ const source = fs.readFileSync(path.join(__dirname, "page-override.js"), "utf8")
 const indexTemplate = fs.readFileSync(path.join(__dirname, "index-template.html"), "utf8");
 
 function loadHelpers(extra = {}) {
-  const context = vm.createContext({ URL, URLSearchParams, console, ...extra });
+  const chrome = extra.chrome || {};
+  const context = vm.createContext({
+    URL,
+    URLSearchParams,
+    atob,
+    console,
+    ...extra,
+    chrome: {
+      ...chrome,
+      storage: {
+        ...chrome.storage,
+        local: {
+          async get() { return {}; },
+          ...chrome.storage?.local,
+        },
+      },
+    },
+  });
   vm.runInContext(source, context);
   return context;
 }
@@ -78,11 +95,22 @@ test("saved HTML opens the captured URL when the brand logo link is clicked", as
   const saved = files.get(name);
   assert.match(saved, /^<!doctype html>/);
   assert.match(saved, /<title>(?!Old)/);
+  assert.match(saved, /<link id="page-override-favicon" rel="icon" type="image\/png" sizes="32x32" href="http:\/\/localhost:8080\/Shopping\/icon-32\.png\?v=2">/);
   assert.ok(saved.indexOf('<meta charset="utf-8">') < saved.indexOf("<script>"));
   assert.ok(!saved.includes("</script><script>bad()"));
   assertBrandLogoClickHandler(saved, url);
   assert.ok(files.has("index.json"));
   assert.ok(files.has("index.html"));
+  assert.ok(files.has("icon-32.png"));
+});
+
+test("generated pages replace existing favicons and remove favicon-blocking CSP metadata", () => {
+  const context = loadHelpers();
+  const html = '<html><head><meta http-equiv="Content-Security-Policy" content="img-src https:"><link rel="shortcut icon" href="/old.ico"><link rel="apple-touch-icon" href="/apple.png"></head><body></body></html>';
+  const result = context.withPageOverrideFavicon(html, "http://localhost:8080/Shopping/icon-32.png?v=2");
+  assert.equal((result.match(/rel="[^"]*icon[^"]*"/gi) || []).length, 1);
+  assert.match(result, /href="http:\/\/localhost:8080\/Shopping\/icon-32\.png\?v=2"/);
+  assert.doesNotMatch(result, /old\.ico|apple\.png|Content-Security-Policy/);
 });
 
 test("saved index entries retain original URLs and trip types across saves", async () => {
@@ -342,6 +370,11 @@ test("index progress counts only entries eligible for update", () => {
   assert.match(indexTemplate, /"Updating " \+ \(i \+ 1\) \+ " of " \+ updateList\.length/);
   assert.match(indexTemplate, /"Updated " \+ \(updateList\.length - failures\.length\) \+ " of " \+ updateList\.length/);
   assert.doesNotMatch(indexTemplate, /progressEl\.classList\.remove\("active", "done", "fading"\)/);
+});
+
+test("saved index uses the local test title and extension icon as favicon", () => {
+  assert.match(indexTemplate, /<title>Local Test Pages<\/title>/);
+  assert.match(indexTemplate, /<link rel="icon" type="image\/png" sizes="32x32" href="icon-32\.png\?v=2">/);
 });
 
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {
