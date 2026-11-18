@@ -137,19 +137,13 @@
       // Clicking anywhere else, or pressing Esc, cancels a pending delete.
       document.addEventListener("click", disarm);
       document.addEventListener("keydown", (event) => { if (event.key === "Escape") disarm(); });
-      document.addEventListener("keydown", updateLiveLinkState);
-      document.addEventListener("keyup", updateLiveLinkState);
-      window.addEventListener("blur", () => {
-        liveLinkModifiers = false;
-        document.body.classList.remove("live-links-ready");
-        tables.querySelectorAll("a[data-original-url]").forEach((link) => {
-          link.textContent = link.dataset.label;
-          link.href = encodeURIComponent(link.dataset.snapshotName);
-        });
+      document.addEventListener("keydown", (event) => {
+        if (event.repeat) return;
+        if (event.key === "1") setLiveLinks(true);
+        if (event.key === "2") setLiveLinks(false);
       });
 
-      function updateLiveLinkState(event) {
-        const active = Boolean(event.shiftKey);
+      function setLiveLinks(active) {
         if (active === liveLinkModifiers) return;
         liveLinkModifiers = active;
         document.body.classList.toggle("live-links-ready", active);

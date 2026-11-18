@@ -375,9 +375,12 @@ test("saved index opens the original URL with shift-click shortcuts", () => {
   assert.match(indexTemplate, /const originalUrl = e\.url/);
   assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(originalUrl, "_blank", "noopener,noreferrer"\)/);
   assert.match(indexTemplate, /window\.location\.href = originalUrl/);
+  const clickHandler = indexTemplate.match(/a\.onclick = \(event\) => \{([\s\S]*?)\n            \};/)?.[1] || "";
+  assert.doesNotMatch(clickHandler, /a\.textContent|setLiveLinks|dataset\.label|a\.href/);
   assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: [^;]+; \}/);
-  assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
-  assert.match(indexTemplate, /const active = Boolean\(event\.shiftKey\)/);
+  assert.match(indexTemplate, /if \(event\.key === "1"\) setLiveLinks\(true\)/);
+  assert.match(indexTemplate, /if \(event\.key === "2"\) setLiveLinks\(false\)/);
+  assert.match(indexTemplate, /function setLiveLinks\(active\)[\s\S]*if \(active === liveLinkModifiers\) return/);
   assert.match(indexTemplate, /link\.textContent = active \? link\.dataset\.originalUrl : link\.dataset\.label/);
   assert.match(indexTemplate, /link\.href = active \? link\.dataset\.originalUrl : encodeURIComponent\(link\.dataset\.snapshotName\)/);
   assert.match(indexTemplate, /if \(e\.url\) a\.dataset\.originalUrl = e\.url/);
