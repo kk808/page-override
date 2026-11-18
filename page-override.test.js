@@ -345,8 +345,8 @@ test("index progress counts only entries eligible for update", () => {
   assert.doesNotMatch(indexTemplate, /progressEl\.classList\.remove\("active", "done", "fading"\)/);
 });
 
-test("saved index uses the local test title without a custom favicon", () => {
-  assert.match(indexTemplate, /<title>Local Test Pages<\/title>/);
+test("saved index uses the test pages title without a custom favicon", () => {
+  assert.match(indexTemplate, /<title>Test Pages<\/title>/);
   assert.doesNotMatch(indexTemplate, /rel="icon"|icon-32\.png/);
 });
 
@@ -365,6 +365,17 @@ test("saved index provides a rename action and safely updates the filename", () 
   assert.match(indexTemplate, /item\.name\.toLowerCase\(\) === newName\.toLowerCase\(\)/);
   assert.match(indexTemplate, /entries = entries\.map\(\(item\) => item\.name === entry\.name \? \{ \.\.\.item, name: newName \} : item\)/);
   assert.match(indexTemplate, /await dir\.removeEntry\(entry\.name\)/);
+});
+
+test("saved index opens the original URL with shift-click shortcuts", () => {
+  assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey\) return;/);
+  assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(e\.url, "_blank"\)/);
+  assert.match(indexTemplate, /newTab\.opener = null;[\s\S]*window\.focus\(\)/);
+  assert.match(indexTemplate, /window\.location\.assign\(e\.url\)/);
+  assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: orangered; \}/);
+  assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
+  assert.match(indexTemplate, /event\.shiftKey && \(event\.ctrlKey \|\| event\.metaKey\)/);
+  assert.match(indexTemplate, /if \(e\.url\) a\.dataset\.originalUrl = e\.url/);
 });
 
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {

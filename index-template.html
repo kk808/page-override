@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <title>Local Test Pages</title>
+    <title>Test Pages</title>
     <style>
       :root { color-scheme: dark; }
       body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 96px; background: #0f1218; color: #e6e9ef; }
@@ -40,6 +40,8 @@
       td:first-child { padding-right: 4px; }
       a { color: #7aa7ff; text-decoration: none; }
       a:hover { color: #a9c4ff; text-decoration: underline; }
+      body.live-links-ready a[data-original-url] { color: mediumaquamarine; }
+      body.live-links-ready a[data-original-url]:hover { color: #ff6a3d; }
       #status { margin: 0 0 8px; color: #8b93a7; }
       #status:empty { display: none; }
       #actions { position: fixed; left: 24px; right: 24px; bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
@@ -93,6 +95,7 @@
       let resetArmed = false;
       let updateArmed = false;
       let updating = false;
+      let liveLinkModifiers = false;
       const GROUP_ORDER_KEY = "page-override-group-order";
       let groupOrder = [];
       let draggedGroup = "";
@@ -134,6 +137,19 @@
       // Clicking anywhere else, or pressing Esc, cancels a pending delete.
       document.addEventListener("click", disarm);
       document.addEventListener("keydown", (event) => { if (event.key === "Escape") disarm(); });
+      document.addEventListener("keydown", updateLiveLinkState);
+      document.addEventListener("keyup", updateLiveLinkState);
+      window.addEventListener("blur", () => {
+        liveLinkModifiers = false;
+        document.body.classList.remove("live-links-ready");
+      });
+
+      function updateLiveLinkState(event) {
+        const active = Boolean(event.shiftKey && (event.ctrlKey || event.metaKey));
+        if (active === liveLinkModifiers) return;
+        liveLinkModifiers = active;
+        document.body.classList.toggle("live-links-ready", active);
+      }
 
       async function load() {
         try {
@@ -231,11 +247,29 @@
             const tr = document.createElement("tr");
             const a = document.createElement("a");
             a.href = encodeURIComponent(e.name);
+            if (e.url) a.dataset.originalUrl = e.url;
             let label = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
             // The TripType is the table heading, so drop it from the start of the label.
             if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
             a.textContent = label;
-            a.title = label;
+            a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
+            a.onclick = (event) => {
+              if (!event.shiftKey) return;
+              event.preventDefault();
+              if (!e.url) {
+                statusEl.textContent = "No original URL is saved for " + e.name + ".";
+                return;
+              }
+              if (event.ctrlKey || event.metaKey) {
+                const newTab = window.open(e.url, "_blank");
+                if (newTab) {
+                  newTab.opener = null;
+                  window.focus();
+                }
+              } else {
+                window.location.assign(e.url);
+              }
+            };
             const linkCell = document.createElement("td");
             linkCell.append(a);
             const rename = document.createElement("button");
