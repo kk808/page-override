@@ -137,26 +137,27 @@
       // Clicking anywhere else, or pressing Esc, cancels a pending delete.
       document.addEventListener("click", disarm);
       document.addEventListener("keydown", (event) => { if (event.key === "Escape") disarm(); });
-      document.addEventListener("keydown", updateLiveLinkState);
-      document.addEventListener("keyup", updateLiveLinkState);
+      document.addEventListener("keydown", (event) => {
+        if (event.repeat) return;
+        if (event.key === "1") setLiveLinks(true);
+        if (event.key === "2") setLiveLinks(false);
+      });
       window.addEventListener("blur", () => {
-        liveLinkModifiers = false;
-        document.body.classList.remove("live-links-ready");
-        tables.querySelectorAll("a[data-original-url]").forEach((link) => {
-          link.textContent = link.dataset.label;
-          link.href = encodeURIComponent(link.dataset.snapshotName);
-        });
+        if (!liveLinkModifiers) return;
+        renderLiveLinkState();
       });
 
-      function updateLiveLinkState(event) {
-        const active = Boolean(event.shiftKey);
-        if (active === liveLinkModifiers) return;
-        liveLinkModifiers = active;
-        document.body.classList.toggle("live-links-ready", active);
+      function renderLiveLinkState() {
+        document.body.classList.toggle("live-links-ready", liveLinkModifiers);
         tables.querySelectorAll("a[data-original-url]").forEach((link) => {
-          link.textContent = active ? link.dataset.originalUrl : link.dataset.label;
-          link.href = active ? link.dataset.originalUrl : encodeURIComponent(link.dataset.snapshotName);
+          link.textContent = liveLinkModifiers ? link.dataset.originalUrl : link.dataset.label;
+          link.href = liveLinkModifiers ? link.dataset.originalUrl : encodeURIComponent(link.dataset.snapshotName);
         });
+      }
+
+      function setLiveLinks(active) {
+        liveLinkModifiers = active;
+        renderLiveLinkState();
       }
 
       async function load() {
@@ -267,28 +268,7 @@
             a.dataset.label = label;
             if (e.url) a.dataset.originalUrl = e.url;
             a.textContent = liveLinkModifiers && e.url ? e.url : label;
-            a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
-            a.onmousedown = (event) => {
-              if (event.shiftKey) event.preventDefault();
-            };
-            a.onclick = (event) => {
-              if (!event.shiftKey) return;
-              event.preventDefault();
-              event.stopPropagation();
-              const originalUrl = e.url;
-              if (!originalUrl) {
-                statusEl.textContent = "No original URL is saved in index.json for " + a.dataset.snapshotName + ".";
-                return;
-              }
-              if (event.ctrlKey || event.metaKey) {
-                const newTab = window.open(originalUrl, "_blank", "noopener,noreferrer");
-                if (newTab) {
-                  window.focus();
-                }
-              } else {
-                window.location.href = originalUrl;
-              }
-            };
+            a.title = label;
             const linkCell = document.createElement("td");
             linkCell.append(a);
             const rename = document.createElement("button");

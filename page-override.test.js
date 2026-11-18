@@ -367,19 +367,16 @@ test("saved index provides a rename action and safely updates the filename", () 
   assert.match(indexTemplate, /await dir\.removeEntry\(entry\.name\)/);
 });
 
-test("saved index opens the original URL with shift-click shortcuts", () => {
+test("saved index enables original URLs with 1 and restores snapshots with 2", () => {
   assert.match(indexTemplate, /a\.draggable = false/);
   assert.match(indexTemplate, /event\.target\.closest\("a, button"\)/);
-  assert.match(indexTemplate, /a\.onmousedown = \(event\) => \{[\s\S]*if \(event\.shiftKey\) event\.preventDefault\(\)/);
-  assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey/);
-  assert.match(indexTemplate, /const originalUrl = e\.url/);
-  assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(originalUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(indexTemplate, /window\.location\.href = originalUrl/);
+  assert.doesNotMatch(indexTemplate, /a\.onmousedown|a\.onclick/);
   assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: [^;]+; \}/);
-  assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
-  assert.match(indexTemplate, /const active = Boolean\(event\.shiftKey\)/);
-  assert.match(indexTemplate, /link\.textContent = active \? link\.dataset\.originalUrl : link\.dataset\.label/);
-  assert.match(indexTemplate, /link\.href = active \? link\.dataset\.originalUrl : encodeURIComponent\(link\.dataset\.snapshotName\)/);
+  assert.match(indexTemplate, /if \(event\.key === "1"\) setLiveLinks\(true\)/);
+  assert.match(indexTemplate, /if \(event\.key === "2"\) setLiveLinks\(false\)/);
+  assert.match(indexTemplate, /function setLiveLinks\(active\)[\s\S]*liveLinkModifiers = active/);
+  assert.match(indexTemplate, /link\.textContent = liveLinkModifiers \? link\.dataset\.originalUrl : link\.dataset\.label/);
+  assert.match(indexTemplate, /link\.href = liveLinkModifiers \? link\.dataset\.originalUrl : encodeURIComponent\(link\.dataset\.snapshotName\)/);
   assert.match(indexTemplate, /if \(e\.url\) a\.dataset\.originalUrl = e\.url/);
   assert.match(indexTemplate, /a\.dataset\.label = label/);
 });
