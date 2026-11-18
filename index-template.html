@@ -145,7 +145,7 @@
       });
 
       function updateLiveLinkState(event) {
-        const active = Boolean(event.shiftKey && (event.ctrlKey || event.metaKey));
+        const active = Boolean(event.shiftKey);
         if (active === liveLinkModifiers) return;
         liveLinkModifiers = active;
         document.body.classList.toggle("live-links-ready", active);
@@ -256,7 +256,7 @@
             a.textContent = label;
             a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
             a.onclick = (event) => {
-              if (!event.shiftKey || (!event.ctrlKey && !event.metaKey && event.button !== 0)) return;
+              if (!event.shiftKey || event.button !== 0) return;
               event.preventDefault();
               event.stopPropagation();
               const savedEntry = entries.find((item) => item.name === a.dataset.snapshotName);
