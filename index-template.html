@@ -149,6 +149,9 @@
         if (active === liveLinkModifiers) return;
         liveLinkModifiers = active;
         document.body.classList.toggle("live-links-ready", active);
+        tables.querySelectorAll("a[data-original-url]").forEach((link) => {
+          link.textContent = active ? link.dataset.originalUrl : link.dataset.label;
+        });
       }
 
       async function load() {
@@ -253,11 +256,12 @@
             a.href = encodeURIComponent(e.name);
             a.draggable = false;
             a.dataset.snapshotName = e.name;
-            if (e.url) a.dataset.originalUrl = e.url;
             let label = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
             // The TripType is the table heading, so drop it from the start of the label.
             if (e.tripType && label.startsWith(e.tripType + "-")) label = label.slice(e.tripType.length + 1);
-            a.textContent = label;
+            a.dataset.label = label;
+            if (e.url) a.dataset.originalUrl = e.url;
+            a.textContent = liveLinkModifiers && e.url ? e.url : label;
             a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
             a.onmousedown = (event) => {
               if (event.shiftKey) event.preventDefault();
