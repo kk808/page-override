@@ -142,6 +142,10 @@
       window.addEventListener("blur", () => {
         liveLinkModifiers = false;
         document.body.classList.remove("live-links-ready");
+        tables.querySelectorAll("a[data-original-url]").forEach((link) => {
+          link.textContent = link.dataset.label;
+          link.href = encodeURIComponent(link.dataset.snapshotName);
+        });
       });
 
       function updateLiveLinkState(event) {
@@ -151,6 +155,7 @@
         document.body.classList.toggle("live-links-ready", active);
         tables.querySelectorAll("a[data-original-url]").forEach((link) => {
           link.textContent = active ? link.dataset.originalUrl : link.dataset.label;
+          link.href = active ? link.dataset.originalUrl : encodeURIComponent(link.dataset.snapshotName);
         });
       }
 

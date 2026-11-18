@@ -379,6 +379,7 @@ test("saved index opens the original URL with shift-click shortcuts", () => {
   assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
   assert.match(indexTemplate, /const active = Boolean\(event\.shiftKey\)/);
   assert.match(indexTemplate, /link\.textContent = active \? link\.dataset\.originalUrl : link\.dataset\.label/);
+  assert.match(indexTemplate, /link\.href = active \? link\.dataset\.originalUrl : encodeURIComponent\(link\.dataset\.snapshotName\)/);
   assert.match(indexTemplate, /if \(e\.url\) a\.dataset\.originalUrl = e\.url/);
   assert.match(indexTemplate, /a\.dataset\.label = label/);
 });
