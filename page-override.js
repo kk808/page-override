@@ -1,6 +1,5 @@
 // Shared by the side panel and the background worker (Alt+4 shortcut).
 const DEFAULT_PAGE_OVERRIDE_BASE_URL = "http://localhost:8080/Shopping/";
-const PAGE_OVERRIDE_FAVICON_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAJTSURBVFhHvVc9SAMxFO7o6Ojo6OgivaSQOHYRKg662UVsLwUddZEKgougWyft4CQOTuIo6qAuioOLDiqCdRAcBDtWXq5N716Su1xt+8EHd5fkve/l3stPJtMD+HJ2nIvcdITL2XHcr6/gvpdnFVJjgja4oC0TmU++mSB1LsgCX+Qj2EZPgOiYIPfYWRKlUJ8WsT1n8BU+ygQ9w4bTUopP+3t4hUwwQV+wsV4JvwZmEvsxQjqXA3RD/yETpAl5hP1F0J72vkWOKQOrkAnsV4H59BwP6jdlgKYK4WVSwJ0HRp+sYf8ZW6nNb8y10gLGYDthBvkwNaacx0U/CAEBSTUcfV3voAu4f7pr1U/3jXx+f0olgAlyHUS/yEfiyi4sABzNrs+0VvaExtvHG9Vv82BDfS/vLGk2FeE3cJ9Oag0xArYPt9S7CxpfH5rNrgAvLzcZrWFoAmgRZqCoNTgKuHq4MObA8fmRdAyIFQCJyMu0pDe4CYDnTr+z71P1HcZAwgIcBNhLcOACyrSU4aWcpzUMTQAptDcg0tQahyHAp5Pthch+8MAL0dXDpXqHZ1MSugiATSm0FNsTMSzAFU4CKqTWFeBPjdlWw0EJUNOvRAhvVetkoC0HMOMEMEFPIs6lANgTYo7cHYYFvH2+Skcm/vz+GAXIhLcdUqEk4yoCC3ABFgB3Buw3AnmpMDjuiwDTScgE2B+SZiI1XZ13IH+HpTLSMAgkYdptCMqT7mKjroRsjz2GuwKytn0xTbwzQCUFRzzHm1BaQETBGYJUI4RvpZyH+yfhD+uubrb1KwdLAAAAAElFTkSuQmCC";
 
 async function getPageOverrideBaseUrl() {
   const { baseUrl } = await chrome.storage.local.get("baseUrl");
@@ -156,22 +155,6 @@ function withTitle(html, title) {
   return html;
 }
 
-function withPageOverrideFavicon(html, faviconUrl = "icon-32.png?v=2") {
-  const withoutIcons = html.replace(/<link\b[^>]*>/gi, (tag) => {
-    const rel = tag.match(/\brel\s*=\s*(["'])(.*?)\1/i)?.[2] || "";
-    return rel.split(/\s+/).some((value) => value.toLowerCase().endsWith("icon")) ? "" : tag;
-  }).replace(/<meta\b[^>]*>/gi, (tag) => {
-    const httpEquiv = tag.match(/\bhttp-equiv\s*=\s*(["'])(.*?)\1/i)?.[2] || "";
-    return /^content-security-policy(-report-only)?$/i.test(httpEquiv) ? "" : tag;
-  });
-  const escapedFaviconUrl = faviconUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-  const iconTag = `<link id="page-override-favicon" rel="icon" type="image/png" sizes="32x32" href="${escapedFaviconUrl}">`;
-  if (/<head[^>]*>/i.test(withoutIcons)) {
-    return withoutIcons.replace(/<head[^>]*>/i, (head) => head + iconTag);
-  }
-  return withoutIcons;
-}
-
 const ORIGINAL_URL_HANDLER_RE = /<script>\r?\n(?:window\.addEventListener\("dblclick", \(event\) => \{\r?\n  if \(document\.body && document\.body\.contains\(event\.target\)\) (?:window\.open|location\.assign)\(("(?:\\.|[^"\\])*")(?:, "_blank", "noopener,noreferrer")?\);\r?\n\}, true\);|document\.addEventListener\("DOMContentLoaded", \(\) => \{\r?\n  const brandLogo = document\.querySelector\("a\.brand-logo"\);\r?\n  if \(brandLogo\) \{\r?\n    brandLogo\.addEventListener\("click", \(event\) => \{\r?\n      event\.preventDefault\(\);\r?\n      window\.open\(("(?:\\.|[^"\\])*"), "_blank", "noopener,noreferrer"\);\r?\n    \}\);\r?\n  \}\r?\n\}\);)\r?\n<\/script>/;
 
 function withOriginalUrlBrandLogoClick(html, url) {
@@ -268,9 +251,9 @@ async function savePageHtml(destinationDirectory, { html, url, name: existingNam
   return name;
 }
 
-function finalizePageHtml({ html, url, name, faviconUrl }) {
+function finalizePageHtml({ html, url, name }) {
   const titledHtml = withTitle(html, name.replace(/^SearchFight-/, "").replace(/\.html$/, ""));
-  return withPageOverrideFavicon(withOriginalUrlBrandLogoClick(titledHtml, url), faviconUrl);
+  return withOriginalUrlBrandLogoClick(titledHtml, url);
 }
 
 // Used by the saved index page ("Update All"): fetches the latest HTML so the page can write it under the same name.
@@ -286,34 +269,18 @@ async function fetchUpdatedPageHtml({ name, url, snapshot }) {
     throw new Error("Original URL must use HTTP or HTTPS.");
   }
   const page = await fetchOriginalPage(originalUrl);
-  const faviconUrl = new URL("icon-32.png?v=2", await getPageOverrideBaseUrl()).href;
-  return finalizePageHtml({ ...page, name, faviconUrl });
+  return finalizePageHtml({ ...page, name });
 }
 
 async function writePageHtml(destinationDirectory, { html, url, name }) {
-  await writePageOverrideFavicon(destinationDirectory);
-  const faviconUrl = new URL("icon-32.png?v=2", await getPageOverrideBaseUrl()).href;
   const handle = await destinationDirectory.getFileHandle(name, { create: true });
   const writer = await handle.createWritable();
   try {
-    await writer.write(finalizePageHtml({ html, url, name, faviconUrl }));
+    await writer.write(finalizePageHtml({ html, url, name }));
     await writer.close();
   } catch (error) {
     try { await writer.abort(); }
     catch (abortError) { console.warn("Could not abort the incomplete page save", abortError); }
-    throw error;
-  }
-}
-
-async function writePageOverrideFavicon(destinationDirectory) {
-  const bytes = Uint8Array.from(atob(PAGE_OVERRIDE_FAVICON_BASE64), (character) => character.charCodeAt(0));
-  const writer = await (await destinationDirectory.getFileHandle("icon-32.png", { create: true })).createWritable();
-  try {
-    await writer.write(bytes);
-    await writer.close();
-  } catch (error) {
-    try { await writer.abort(); }
-    catch (abortError) { console.warn("Could not abort the incomplete favicon save", abortError); }
     throw error;
   }
 }
@@ -389,7 +356,6 @@ async function readSavedOverrideDirectories() {
 
 // Keeps index.json (data) and index.html (viewer) in the destination folder in sync with saved pages.
 async function updateIndex(destinationDirectory, { name, url }) {
-  await writePageOverrideFavicon(destinationDirectory);
   let entries = [];
   try {
     const file = await (await destinationDirectory.getFileHandle("index.json")).getFile();

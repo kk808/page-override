@@ -3,12 +3,15 @@
   <head>
     <meta charset="utf-8">
     <title>Local Test Pages</title>
-    <link rel="icon" type="image/png" sizes="32x32" href="icon-32.png?v=2">
     <style>
       :root { color-scheme: dark; }
       body { font: 15px/1.5 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 32px 24px 96px; background: #0f1218; color: #e6e9ef; }
       #tables { display: grid; gap: 16px; align-items: start; width: 100%; }
       table { table-layout: fixed; }
+      table.draggable-group { cursor: grab; transition: opacity .15s, outline-color .15s; }
+      table.draggable-group:active { cursor: grabbing; }
+      table.dragging { opacity: .45; }
+      table.drop-before { outline: 2px solid #5b8def; outline-offset: -2px; }
       td:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       td:first-child a { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       h1 { margin: 0 0 4px; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
@@ -89,6 +92,35 @@
       let resetArmed = false;
       let updateArmed = false;
       let updating = false;
+      const GROUP_ORDER_KEY = "page-override-group-order";
+      let groupOrder = [];
+      let draggedGroup = "";
+
+      function tripTypeKey(entry) {
+        return entry.tripType || "Unknown";
+      }
+
+      function allGroups() {
+        const available = Array.from(new Set(entries.map(tripTypeKey)));
+        return [...new Set([...groupOrder.filter((group) => available.includes(group)), ...available])];
+      }
+
+      function restoreGroupOrder() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(GROUP_ORDER_KEY) || "[]");
+          if (Array.isArray(stored) && stored.every((group) => typeof group === "string")) groupOrder = stored;
+        } catch (err) {
+          statusEl.textContent = "Could not restore table order: " + err.message;
+        }
+      }
+
+      function retainGroupOrder() {
+        try {
+          localStorage.setItem(GROUP_ORDER_KEY, JSON.stringify(groupOrder));
+        } catch (err) {
+          statusEl.textContent = "Could not save table order: " + err.message;
+        }
+      }
 
       function disarm() {
         if (armedRow) armedRow.classList.remove("armed");
@@ -113,21 +145,57 @@
       function render() {
         const q = filterEl.value.trim().toLowerCase();
         const shown = entries
-          .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q))
-          // Sort by TripType; Array.sort is stable, so newest stays first within a trip type.
-          .sort((a, b) => (a.tripType || "").localeCompare(b.tripType || ""));
+          .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q));
         document.getElementById("count").textContent = shown.length + "/" + entries.length;
         tables.textContent = "";
         // One table per TripType (up to 4), laid out side by side across the full viewport width.
         const groups = new Map();
         for (const e of shown) {
-          const key = e.tripType || "Unknown";
+          const key = tripTypeKey(e);
           if (!groups.has(key)) groups.set(key, []);
           groups.get(key).push(e);
         }
+        const orderedGroups = allGroups()
+          .filter((group) => groups.has(group))
+          .map((group) => [group, groups.get(group)]);
         tables.style.gridTemplateColumns = "repeat(" + Math.max(groups.size, 1) + ", minmax(0, 1fr))";
-        for (const [tripType, items] of groups) {
+        for (const [tripType, items] of orderedGroups) {
           const table = document.createElement("table");
+          table.className = "draggable-group";
+          table.draggable = true;
+          table.dataset.group = tripType;
+          table.title = "Drag to rearrange";
+          table.ondragstart = (event) => {
+            draggedGroup = tripType;
+            table.classList.add("dragging");
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", tripType);
+          };
+          table.ondragend = () => {
+            draggedGroup = "";
+            table.classList.remove("dragging");
+            tables.querySelectorAll(".drop-before").forEach((item) => item.classList.remove("drop-before"));
+          };
+          table.ondragover = (event) => {
+            if (!draggedGroup || draggedGroup === tripType) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "move";
+            table.classList.add("drop-before");
+          };
+          table.ondragleave = () => table.classList.remove("drop-before");
+          table.ondrop = (event) => {
+            event.preventDefault();
+            table.classList.remove("drop-before");
+            if (!draggedGroup || draggedGroup === tripType) return;
+            const order = allGroups();
+            order.splice(order.indexOf(draggedGroup), 1);
+            const target = order.indexOf(tripType);
+            const insertAfter = event.clientX > table.getBoundingClientRect().left + table.offsetWidth / 2;
+            order.splice(target + (insertAfter ? 1 : 0), 0, draggedGroup);
+            groupOrder = order;
+            retainGroupOrder();
+            render();
+          };
           const head = document.createElement("thead");
           const headRow = document.createElement("tr");
           const th = document.createElement("th");
@@ -272,17 +340,9 @@
           chrome.runtime.sendMessage(EXTENSION_ID, { type: "fetchUpdatedPage", name: entry.name, url: entry.url, snapshot }, (reply) => {
             if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
             else if (!reply || reply.error) reject(new Error(reply?.error || "No response from extension."));
-            else resolve({ html: reply.html, favicon: reply.favicon });
+            else resolve(reply.html);
           });
         });
-      }
-
-      async function writeFavicon(favicon) {
-        if (!favicon) return;
-        const bytes = Uint8Array.from(atob(favicon), (character) => character.charCodeAt(0));
-        const w = await (await dir.getFileHandle("icon-32.png", { create: true })).createWritable();
-        try { await w.write(bytes); await w.close(); }
-        catch (err) { await w.abort().catch(() => {}); throw err; }
       }
 
       async function updateAll() {
@@ -305,10 +365,9 @@
             try {
               let snapshot;
               if (!entry.url) snapshot = await (await (await dir.getFileHandle(entry.name)).getFile()).text();
-              const updated = await fetchUpdated(entry, snapshot);
-              await writeFavicon(updated.favicon);
+              const html = await fetchUpdated(entry, snapshot);
               const w = await (await dir.getFileHandle(entry.name, { create: true })).createWritable();
-              try { await w.write(updated.html); await w.close(); }
+              try { await w.write(html); await w.close(); }
               catch (err) { await w.abort().catch(() => {}); throw err; }
             } catch (err) { failures.push(entry.name + ": " + err.message); }
             progressBar.value = i + 1;
@@ -344,6 +403,7 @@
 
       filterEl.oninput = render;
       const restored = restoreDir();
+      restoreGroupOrder();
       load();
     </script>
   </body>
