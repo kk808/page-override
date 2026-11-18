@@ -247,6 +247,8 @@
             const tr = document.createElement("tr");
             const a = document.createElement("a");
             a.href = encodeURIComponent(e.name);
+            a.draggable = false;
+            a.dataset.snapshotName = e.name;
             if (e.url) a.dataset.originalUrl = e.url;
             let label = e.name.replace(/^SearchFight-/, "").replace(/\.html$/, "");
             // The TripType is the table heading, so drop it from the start of the label.
@@ -254,20 +256,22 @@
             a.textContent = label;
             a.title = label + (e.url ? " (Shift-click: open original; Ctrl+Shift-click: open original in a new tab)" : "");
             a.onclick = (event) => {
-              if (!event.shiftKey) return;
+              if (!event.shiftKey || (!event.ctrlKey && !event.metaKey && event.button !== 0)) return;
               event.preventDefault();
-              if (!e.url) {
-                statusEl.textContent = "No original URL is saved for " + e.name + ".";
+              event.stopPropagation();
+              const savedEntry = entries.find((item) => item.name === a.dataset.snapshotName);
+              const originalUrl = savedEntry?.url;
+              if (!originalUrl) {
+                statusEl.textContent = "No original URL is saved in index.json for " + a.dataset.snapshotName + ".";
                 return;
               }
               if (event.ctrlKey || event.metaKey) {
-                const newTab = window.open(e.url, "_blank");
+                const newTab = window.open(originalUrl, "_blank", "noopener,noreferrer");
                 if (newTab) {
-                  newTab.opener = null;
                   window.focus();
                 }
               } else {
-                window.location.assign(e.url);
+                window.location.assign(originalUrl);
               }
             };
             const linkCell = document.createElement("td");

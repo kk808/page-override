@@ -368,11 +368,12 @@ test("saved index provides a rename action and safely updates the filename", () 
 });
 
 test("saved index opens the original URL with shift-click shortcuts", () => {
-  assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey\) return;/);
-  assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(e\.url, "_blank"\)/);
-  assert.match(indexTemplate, /newTab\.opener = null;[\s\S]*window\.focus\(\)/);
-  assert.match(indexTemplate, /window\.location\.assign\(e\.url\)/);
-  assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: orangered; \}/);
+  assert.match(indexTemplate, /a\.draggable = false/);
+  assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey/);
+  assert.match(indexTemplate, /entries\.find\(\(item\) => item\.name === a\.dataset\.snapshotName\)/);
+  assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(originalUrl, "_blank", "noopener,noreferrer"\)/);
+  assert.match(indexTemplate, /window\.location\.assign\(originalUrl\)/);
+  assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: [^;]+; \}/);
   assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
   assert.match(indexTemplate, /event\.shiftKey && \(event\.ctrlKey \|\| event\.metaKey\)/);
   assert.match(indexTemplate, /if \(e\.url\) a\.dataset\.originalUrl = e\.url/);
