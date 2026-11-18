@@ -372,7 +372,7 @@ test("saved index opens the original URL with shift-click shortcuts", () => {
   assert.match(indexTemplate, /a\.onclick = \(event\) => \{[\s\S]*if \(!event\.shiftKey/);
   assert.match(indexTemplate, /const originalUrl = e\.url/);
   assert.match(indexTemplate, /if \(event\.ctrlKey \|\| event\.metaKey\)[\s\S]*window\.open\(originalUrl, "_blank", "noopener,noreferrer"\)/);
-  assert.match(indexTemplate, /window\.location\.assign\(originalUrl\)/);
+  assert.match(indexTemplate, /window\.open\(originalUrl, "_self"\)/);
   assert.match(indexTemplate, /body\.live-links-ready a\[data-original-url\] \{ color: [^;]+; \}/);
   assert.match(indexTemplate, /document\.addEventListener\("keydown", updateLiveLinkState\)/);
   assert.match(indexTemplate, /const active = Boolean\(event\.shiftKey\)/);
