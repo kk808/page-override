@@ -243,10 +243,15 @@ async function recaptureSavedPage(tabId, destinationDirectory, name) {
   return { html, url, name };
 }
 
-async function savePageHtml(destinationDirectory, { html, url, name: existingName }) {
-  const name = existingName || overrideFileName(url);
+function formatCapturedNote(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function savePageHtml(destinationDirectory, { html, url, name: existingName }, date = new Date()) {
+  const name = existingName || overrideFileName(url, date);
   await writePageHtml(destinationDirectory, { html, url, name });
-  try { await updateIndex(destinationDirectory, { name, url }); }
+  try { await updateIndex(destinationDirectory, { name, url, note: formatCapturedNote(date) }, date); }
   catch (error) { console.warn("Could not update index.html", error); }
   return name;
 }
@@ -285,7 +290,7 @@ async function writePageHtml(destinationDirectory, { html, url, name }) {
   }
 }
 
-async function refreshSavedPages(destinationDirectory) {
+async function refreshSavedPages(destinationDirectory, date = new Date()) {
   const indexHandle = await destinationDirectory.getFileHandle("index.json");
   const indexFile = await indexHandle.getFile();
   const entries = JSON.parse(await indexFile.text());
@@ -295,6 +300,7 @@ async function refreshSavedPages(destinationDirectory) {
   const failures = [];
   const seen = new Set();
   let refreshed = 0;
+  let indexChanged = false;
   for (const entry of updatableEntries) {
     const name = entry?.name;
     try {
@@ -320,9 +326,25 @@ async function refreshSavedPages(destinationDirectory) {
       }
       const page = await fetchOriginalPage(url);
       await writePageHtml(destinationDirectory, { ...page, name });
+      if (!entry.note || !String(entry.note).trim()) {
+        entry.note = formatCapturedNote(date);
+        indexChanged = true;
+      }
       refreshed++;
     } catch (error) {
       failures.push(`${typeof name === "string" ? name : "(unnamed entry)"}: ${error.message || String(error)}`);
+    }
+  }
+
+  if (indexChanged) {
+    const writer = await (await destinationDirectory.getFileHandle("index.json", { create: true })).createWritable();
+    try {
+      await writer.write(JSON.stringify(entries, null, 2));
+      await writer.close();
+    } catch (error) {
+      try { await writer.abort(); }
+      catch (abortError) { console.warn("Could not abort the incomplete index update", abortError); }
+      throw error;
     }
   }
 
@@ -355,7 +377,7 @@ async function readSavedOverrideDirectories() {
 
 
 // Keeps index.json (data) and index.html (viewer) in the destination folder in sync with saved pages.
-async function updateIndex(destinationDirectory, { name, url }) {
+async function updateIndex(destinationDirectory, { name, url, note }, date = new Date()) {
   let entries = [];
   try {
     const file = await (await destinationDirectory.getFileHandle("index.json")).getFile();
@@ -365,7 +387,8 @@ async function updateIndex(destinationDirectory, { name, url }) {
   const tripTypeFromName = (n) => n.replace(/\.html$/, "").split("-")[1] || "";
   let tripType = "";
   try { tripType = new URL(url).searchParams.get("TripType") || ""; } catch { /* no usable URL */ }
-  entries = [{ name, tripType: tripType || "Other", url }, ...entries
+  const entryNote = typeof note === "string" ? note : formatCapturedNote(date);
+  entries = [{ name, tripType: tripType || "Other", url, note: entryNote }, ...entries
     .filter((e) => e.name !== name)
     .map((entry) => ({
       ...entry,

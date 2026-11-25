@@ -38,6 +38,7 @@
       td:last-child { text-align: right; padding-left: 0; padding-right: 8px; }
       .row-actions { display: flex; justify-content: flex-end; gap: 2px; }
       td:first-child { padding-right: 4px; }
+      .page-note { font-size: 12px; line-height: 1.3; color: #8b93a7; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       a { color: #7aa7ff; text-decoration: none; }
       a:hover { color: #a9c4ff; text-decoration: underline; }
       body.live-links-ready a[data-original-url] { color: mediumaquamarine; }
@@ -170,7 +171,7 @@
       function render() {
         const q = filterEl.value.trim().toLowerCase();
         const shown = entries
-          .filter((e) => !q || (e.name + " " + (e.tripType || "")).toLowerCase().includes(q));
+          .filter((e) => !q || (e.name + " " + (e.tripType || "") + " " + (e.note || "")).toLowerCase().includes(q));
         document.getElementById("count").textContent = shown.length + "/" + entries.length;
         tables.textContent = "";
         // One table per TripType (up to 4), laid out side by side across the full viewport width.
@@ -291,6 +292,13 @@
             };
             const linkCell = document.createElement("td");
             linkCell.append(a);
+            if (e.note) {
+              const note = document.createElement("div");
+              note.className = "page-note";
+              note.textContent = e.note;
+              note.title = e.note;
+              linkCell.append(note);
+            }
             const rename = document.createElement("button");
             rename.textContent = "✎";
             rename.title = "Rename";
@@ -476,6 +484,11 @@
         });
       }
 
+      function formatCapturedNote(date = new Date()) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
       async function updateAll() {
         const updateList = entries.filter((entry) => entry.tripType !== "Other");
         if (updating || !updateList.length) return;
@@ -483,6 +496,7 @@
         updateBtn.disabled = true;
         resetBtn.disabled = true;
         const failures = [];
+        let indexChanged = false;
         try {
           if (!(await ensureWritableDir())) return;
           progressEl.classList.remove("done", "fading");
@@ -500,8 +514,18 @@
               const w = await (await dir.getFileHandle(entry.name, { create: true })).createWritable();
               try { await w.write(html); await w.close(); }
               catch (err) { await w.abort().catch(() => {}); throw err; }
+              if (!entry.note || !String(entry.note).trim()) {
+                entry.note = formatCapturedNote();
+                indexChanged = true;
+              }
             } catch (err) { failures.push(entry.name + ": " + err.message); }
             progressBar.value = i + 1;
+          }
+          if (indexChanged) {
+            const indexWriter = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
+            try { await indexWriter.write(JSON.stringify(entries, null, 2)); await indexWriter.close(); }
+            catch (err) { await indexWriter.abort().catch(() => {}); throw err; }
+            render();
           }
           progressText.textContent = "Updated " + (updateList.length - failures.length) + " of " + updateList.length;
           progressEl.classList.add("done");

@@ -74,7 +74,8 @@ test("saved HTML opens the captured URL when the brand logo link is clicked", as
   });
   context.destination = destination;
   context.page = { html: '<!doctype html><html><head><meta charset="utf-8"><title>Old</title></head><body><a class="brand-logo" href="/">Logo</a>Saved</body></html>', url };
-  const name = await vm.runInContext("savePageHtml(destination, page)", context);
+  context.savedAt = new Date(2026, 10, 6, 9, 5, 14);
+  const name = await vm.runInContext("savePageHtml(destination, page, savedAt)", context);
   const saved = files.get(name);
   assert.match(saved, /^<!doctype html>/);
   assert.match(saved, /<title>(?!Old)/);
@@ -82,11 +83,14 @@ test("saved HTML opens the captured URL when the brand logo link is clicked", as
   assert.ok(!saved.includes("</script><script>bad()"));
   assertBrandLogoClickHandler(saved, url);
   assert.ok(files.has("index.json"));
+  assert.deepEqual(JSON.parse(files.get("index.json")), [
+    { name, tripType: "Other", url, note: "06/11/2026 09:05" },
+  ]);
   assert.ok(files.has("index.html"));
   assert.doesNotMatch(saved, /page-override-favicon|icon-32\.png/);
 });
 
-test("saved index entries retain original URLs and trip types across saves", async () => {
+test("saved index entries retain original URLs, trip types, and captured notes across saves", async () => {
   const files = new Map();
   const destination = {
     async getFileHandle(name, options) {
@@ -109,27 +113,27 @@ test("saved index entries retain original URLs and trip types across saves", asy
   context.destination = destination;
 
   await vm.runInContext(
-    'updateIndex(destination, { name: "SearchFight-20261106185414.html", url: "https://example.test/search?query=one" })',
+    'updateIndex(destination, { name: "SearchFight-20261106185414.html", url: "https://example.test/search?query=one" }, new Date(2026, 10, 6, 18, 54, 14))',
     context,
   );
   await vm.runInContext(
-    'updateIndex(destination, { name: "SearchFight-Return-20261106185415.html", url: "https://example.test/search?TripType=Return" })',
+    'updateIndex(destination, { name: "SearchFight-Return-20261106185415.html", url: "https://example.test/search?TripType=Return" }, new Date(2026, 10, 6, 18, 55, 15))',
     context,
   );
 
   assert.deepEqual(JSON.parse(files.get("index.json")), [
-    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return" },
-    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one" },
+    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return", note: "06/11/2026 18:55" },
+    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one", note: "06/11/2026 18:54" },
   ]);
 
   await vm.runInContext(
-    'updateIndex(destination, { name: "SearchFight-20261106185416.html", url: "https://example.test/search?query=two" })',
+    'updateIndex(destination, { name: "SearchFight-20261106185416.html", url: "https://example.test/search?query=two" }, new Date(2026, 0, 5, 7, 8, 9))',
     context,
   );
   assert.deepEqual(JSON.parse(files.get("index.json")), [
-    { name: "SearchFight-20261106185416.html", tripType: "Other", url: "https://example.test/search?query=two" },
-    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return" },
-    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one" },
+    { name: "SearchFight-20261106185416.html", tripType: "Other", url: "https://example.test/search?query=two", note: "05/01/2026 07:08" },
+    { name: "SearchFight-Return-20261106185415.html", tripType: "Return", url: "https://example.test/search?TripType=Return", note: "06/11/2026 18:55" },
+    { name: "SearchFight-20261106185414.html", tripType: "Other", url: "https://example.test/search?query=one", note: "06/11/2026 18:54" },
   ]);
 });
 
@@ -301,14 +305,17 @@ test("saved index detection matches only the configured index page", () => {
   assert.equal(context.isSavedIndexPage(undefined, base), false);
 });
 
-test("bulk refresh overwrites snapshots except Other trip types without modifying index files", async () => {
+test("bulk refresh overwrites snapshots except Other trip types and only fills empty notes", async () => {
   const firstUrl = "https://example.test/one?q=1#section";
   const legacyUrl = "https://example.test/two?TripType=Return";
+  const notedUrl = "https://example.test/three?TripType=OneWay";
   const firstName = "SearchFight-First.html";
   const legacyName = "SearchFight-Legacy.html";
+  const notedName = "SearchFight-Noted.html";
   const entries = [
     { name: firstName, tripType: "Other", url: firstUrl },
     { name: legacyName, tripType: "Return", extra: "preserved" },
+    { name: notedName, tripType: "OneWay", url: notedUrl, note: "keep existing note" },
   ];
   const indexJson = JSON.stringify(entries, null, 2);
   const indexHtml = "<html><body>Keep this file unchanged.</body></html>";
@@ -317,6 +324,7 @@ test("bulk refresh overwrites snapshots except Other trip types without modifyin
     ["index.html", indexHtml],
     [firstName, "<html><head></head><body>Old</body></html>"],
     [legacyName, "<html><head></head><body>Legacy</body></html>"],
+    [notedName, "<html><head></head><body>Noted</body></html>"],
   ]);
   const fetched = [];
   const context = loadHelpers({
@@ -328,12 +336,17 @@ test("bulk refresh overwrites snapshots except Other trip types without modifyin
   });
   files.set(legacyName, context.withOriginalUrlBrandLogoClick(files.get(legacyName), legacyUrl));
   context.destination = memoryDirectory(files);
-  assert.equal(await vm.runInContext("refreshSavedPages(destination)", context), 1);
-  assert.deepEqual(fetched, [legacyUrl]);
+  context.refreshedAt = new Date(2026, 10, 25, 15, 20);
+  assert.equal(await vm.runInContext("refreshSavedPages(destination, refreshedAt)", context), 2);
+  assert.deepEqual(fetched, [legacyUrl, notedUrl]);
   assert.equal(files.get(firstName), "<html><head></head><body>Old</body></html>");
   assert.match(files.get(legacyName), /New https:\/\/example\.test\/two/);
   assertBrandLogoClickHandler(files.get(legacyName), legacyUrl);
-  assert.equal(files.get("index.json"), indexJson);
+  assert.deepEqual(JSON.parse(files.get("index.json")), [
+    { name: firstName, tripType: "Other", url: firstUrl },
+    { name: legacyName, tripType: "Return", extra: "preserved", note: "25/11/2026 15:20" },
+    { name: notedName, tripType: "OneWay", url: notedUrl, note: "keep existing note" },
+  ]);
   assert.equal(files.get("index.html"), indexHtml);
 });
 
@@ -384,10 +397,21 @@ test("saved index opens the original URL with shift-click shortcuts", () => {
   assert.match(indexTemplate, /a\.dataset\.label = label/);
 });
 
+test("saved index displays each entry's note under its link", () => {
+  assert.match(indexTemplate, /\.page-note \{/);
+  assert.match(indexTemplate, /linkCell\.append\(a\);[\s\S]*if \(e\.note\) \{[\s\S]*note\.className = "page-note";[\s\S]*note\.textContent = e\.note;[\s\S]*linkCell\.append\(note\);/);
+});
+
+test("saved index Update All records note only when note is empty", () => {
+  assert.match(indexTemplate, /function formatCapturedNote\(date = new Date\(\)\)/);
+  assert.match(indexTemplate, /if \(!entry\.note \|\| !String\(entry\.note\)\.trim\(\)\) \{[\s\S]*entry\.note = formatCapturedNote\(\);[\s\S]*indexChanged = true;[\s\S]*\}/);
+  assert.match(indexTemplate, /if \(indexChanged\) \{[\s\S]*getFileHandle\("index\.json", \{ create: true \}\)[\s\S]*JSON\.stringify\(entries, null, 2\)[\s\S]*render\(\);[\s\S]*\}/);
+});
+
 test("bulk refresh continues after failures and preserves failed snapshots", async () => {
   const entries = [
     { name: "SearchFight-Bad.html", url: "https://example.test/bad" },
-    { name: "Good.html", url: "https://example.test/good" },
+    { name: "Good.html", url: "https://example.test/good", note: "existing" },
     { name: "SearchFight-Old.html" },
     { name: "../index.html", url: "https://example.test/unsafe" },
   ];
