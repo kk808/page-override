@@ -371,13 +371,14 @@ test("saved index tables can be reordered and retain their group positions", () 
   assert.match(indexTemplate, /restoreGroupOrder\(\);[\s\S]*load\(\);/);
 });
 
-test("saved index provides a rename action and safely updates the filename", () => {
+test("saved index provides an edit action to update an entry's note", () => {
   assert.match(indexTemplate, /actionCol\.style\.width = "56px"/);
-  assert.match(indexTemplate, /rename\.setAttribute\("aria-label", "Rename " \+ e\.name\)/);
-  assert.match(indexTemplate, /async function renamePage\(entry\)/);
-  assert.match(indexTemplate, /item\.name\.toLowerCase\(\) === newName\.toLowerCase\(\)/);
-  assert.match(indexTemplate, /entries = entries\.map\(\(item\) => item\.name === entry\.name \? \{ \.\.\.item, name: newName \} : item\)/);
-  assert.match(indexTemplate, /await dir\.removeEntry\(entry\.name\)/);
+  assert.match(indexTemplate, /edit\.title = "Edit Note"/);
+  assert.match(indexTemplate, /edit\.setAttribute\("aria-label", "Edit Note " \+ e\.name\)/);
+  assert.match(indexTemplate, /async function editNote\(entry\)/);
+  assert.match(indexTemplate, /window\.prompt\("Edit note", entry\.note \|\| ""\)/);
+  assert.match(indexTemplate, /entries = entries\.map\(\(item\) => item\.name === entry\.name \? \{ \.\.\.item, note: newNote \} : item\)/);
+  assert.doesNotMatch(indexTemplate, /async function renamePage\(/);
 });
 
 test("saved index opens the original URL with shift-click shortcuts", () => {
@@ -400,6 +401,11 @@ test("saved index opens the original URL with shift-click shortcuts", () => {
 test("saved index displays each entry's note under its link", () => {
   assert.match(indexTemplate, /\.page-note \{/);
   assert.match(indexTemplate, /linkCell\.append\(a\);[\s\S]*if \(e\.note\) \{[\s\S]*note\.className = "page-note";[\s\S]*note\.textContent = e\.note;[\s\S]*linkCell\.append\(note\);/);
+});
+
+test("saved index makes the entire link cell clickable without intercepting buttons", () => {
+  assert.match(indexTemplate, /td:first-child \{[^}]*cursor: pointer;/);
+  assert.match(indexTemplate, /linkCell\.onclick = \(event\) => \{[\s\S]*if \(event\.target\.closest\("a, button"\)\) return;[\s\S]*if \(event\.shiftKey\) \{[\s\S]*a\.onclick\(event\);[\s\S]*window\.location\.href = a\.href;/);
 });
 
 test("saved index Update All records note only when note is empty", () => {
