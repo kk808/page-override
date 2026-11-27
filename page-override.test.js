@@ -376,7 +376,7 @@ test("saved index provides an edit action to update an entry's note", () => {
   assert.match(indexTemplate, /edit\.title = "Edit Note"/);
   assert.match(indexTemplate, /edit\.setAttribute\("aria-label", "Edit Note " \+ e\.name\)/);
   assert.match(indexTemplate, /async function editNote\(entry\)/);
-  assert.match(indexTemplate, /window\.prompt\("Edit note", entry\.note \|\| ""\)/);
+  assert.match(indexTemplate, /async function editNote\(entry\)[\s\S]*ensureWritableDir\(\)[\s\S]*window\.prompt\("Edit note", entry\.note \|\| ""\)/);
   assert.match(indexTemplate, /entries = entries\.map\(\(item\) => item\.name === entry\.name \? \{ \.\.\.item, note: newNote \} : item\)/);
   assert.doesNotMatch(indexTemplate, /async function renamePage\(/);
 });

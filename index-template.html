@@ -407,14 +407,15 @@
       }
 
       async function editNote(entry) {
-        const requested = window.prompt("Edit note", entry.note || "");
-        if (requested === null) return;
-        const newNote = requested.trim();
-        if (newNote === (entry.note || "")) return;
-
         const originalEntries = entries;
         try {
+          // Request folder permission before window.prompt() consumes the user gesture.
           if (!(await ensureWritableDir())) return;
+          const requested = window.prompt("Edit note", entry.note || "");
+          if (requested === null) return;
+          const newNote = requested.trim();
+          if (newNote === (entry.note || "")) return;
+
           entries = entries.map((item) => item.name === entry.name ? { ...item, note: newNote } : item);
           const indexWriter = await (await dir.getFileHandle("index.json", { create: true })).createWritable();
           try {
