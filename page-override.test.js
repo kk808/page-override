@@ -408,6 +408,11 @@ test("saved index makes the entire link cell clickable without intercepting butt
   assert.match(indexTemplate, /linkCell\.onclick = \(event\) => \{[\s\S]*if \(event\.target\.closest\("a, button"\)\) return;[\s\S]*if \(event\.shiftKey\) \{[\s\S]*a\.onclick\(event\);[\s\S]*window\.location\.href = a\.href;/);
 });
 
+test("saved index recovers from a stale cached directory handle", () => {
+  assert.match(indexTemplate, /await dir\.values\(\)\.next\(\);/);
+  assert.match(indexTemplate, /if \(err\.name !== "NotFoundError"\) throw err;[\s\S]*dir = null;[\s\S]*idb\("readwrite", \(s\) => s\.delete\("dir"\)\)/);
+});
+
 test("saved index Update All records note only when note is empty", () => {
   assert.match(indexTemplate, /function formatCapturedNote\(date = new Date\(\)\)/);
   assert.match(indexTemplate, /if \(!entry\.note \|\| !String\(entry\.note\)\.trim\(\)\) \{[\s\S]*entry\.note = formatCapturedNote\(\);[\s\S]*indexChanged = true;[\s\S]*\}/);

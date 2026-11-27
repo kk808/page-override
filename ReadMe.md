@@ -87,3 +87,22 @@ Click the saved page's `a.brand-logo` link to open its original URL in a new tab
 | `options.html` / `options.js` | Settings UI for choosing/clearing the local destination directory and configuring the `localhost` base URL. |
 | `grant.html` / `grant.js` | User-gesture prompt page to re-authorize local folder write access and complete a pending save. |
 | `icons/` | Extension icons (`16`, `32`, `48`, `128` px). |
+
+---
+
+## Troubleshooting
+
+### Edit Note, Delete, Delete All, or Update All stop working without prompting for folder access
+
+All four actions on `index.html` rely on Chrome's File System Access API (`FileSystemDirectoryHandle`) to write to `index.json` and snapshot files. If Chrome has blocked **File editing** for your local site (for example, after clicking **Don't allow** or dismissing the prompt), `requestPermission()` immediately returns `"denied"` without showing a prompt.
+
+**Fix:**
+1. On `index.html`, click the site settings (tune) icon on the left side of Chrome's address bar.
+2. Open **Site settings**.
+3. Set **File editing** back to **Ask (default)** (or click **Reset permissions**).
+4. Reload `index.html` and retry the action.
+
+### `Edit failed: A requested file or directory could not be found`
+
+This happens when the folder handle cached in IndexedDB (`page-override-index`) points to a folder that was moved, renamed, or recreated. The latest `index.html` automatically clears the stale handle and re-opens the folder picker; if you are on an older generated `index.html`, either save a page once to refresh `index.html` or delete the `page-override-index` database in DevTools (**Application** → **IndexedDB**) and reload.
+

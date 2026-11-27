@@ -380,15 +380,30 @@
 
       async function ensureWritableDir() {
         await restored;
+        if (dir) {
+          try {
+            if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
+                await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
+              statusEl.textContent = "Folder access was not granted.";
+              return false;
+            }
+            // Verify the cached directory still exists on disk before writing.
+            await dir.values().next();
+          } catch (err) {
+            if (err.name !== "NotFoundError") throw err;
+            dir = null;
+            await idb("readwrite", (s) => s.delete("dir")).catch(() => {});
+          }
+        }
         if (!dir) {
-          // First delete/reset only: ask for the destination folder, then remember it.
+          // Ask for the destination folder, then remember it.
           dir = await window.showDirectoryPicker({ id: "page-override-index", mode: "readwrite" });
           await idb("readwrite", (s) => s.put(dir, "dir"));
-        }
-        if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
-            await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
-          statusEl.textContent = "Folder access was not granted.";
-          return false;
+          if (await dir.queryPermission({ mode: "readwrite" }) !== "granted" &&
+              await dir.requestPermission({ mode: "readwrite" }) !== "granted") {
+            statusEl.textContent = "Folder access was not granted.";
+            return false;
+          }
         }
         return true;
       }
